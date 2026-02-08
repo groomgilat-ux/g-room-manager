@@ -274,7 +274,7 @@
                     <main className="max-w-7xl mx-auto px-4 py-8">
                         {currentUser.role === 'admin' ? 
                             <AdminDashboard data={data} settings={settings} /> : 
-                            <EmployeeDashboard employee={currentUser.data} data={data} settings={settings} />
+                            <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} />
                         }
                     </main>
                 </div>
