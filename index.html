@@ -302,7 +302,6 @@
         const AdminDashboard = ({ data, settings }) => {
             const [tab, setTab] = useState('employees');
             const pendingReq = data.requests.filter(r => r.status === 'pending');
-            // FIX: Badge counts now filter strictly for pending
             const pendingCons = data.constraints.filter(c => c.status === 'pending');
             const pendingShifts = data.shifts.filter(s => s.status === 'pending');
             
@@ -403,7 +402,6 @@
             const [selEmp, setSelEmp] = useState('');
             const [saving, setSaving] = useState(false);
             
-            // FIX: Using status string instead of boolean approved
             const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
             const pendingShifts = shifts.filter(s => s.status === 'pending');
 
@@ -447,7 +445,6 @@
 
             return (
                 <div className="space-y-6">
-                    {/* Pending Shifts Section - New Request */}
                     {pendingShifts.length > 0 && (
                         <Card title="משמרות ממתינות לאישור">
                             <div className="overflow-x-auto">
@@ -461,7 +458,7 @@
                                                 <tr key={s.id} className="hover:bg-gray-800/30">
                                                     <td className="py-2 font-bold">{e?.name}</td>
                                                     <td>{formatDateIL(s.date)}</td>
-                                                    <td>{formatDateIL(s.date)}</td> {/* Assuming shift ends same day */}
+                                                    <td>{formatDateIL(s.date)}</td> 
                                                     <td>{s.startTime} - {endTime}</td>
                                                     <td>{s.room}</td>
                                                     <td>{s.gamesCount}</td>
@@ -574,15 +571,11 @@
 
             const dayTitle = (d) => d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'});
 
-            // FIX: Sorting Logic for constraints
             const sortedConstraints = useMemo(() => {
                 return [...constraints].sort((a, b) => {
-                    // Sort by Employee Name
                     const empA = employees.find(e => e.id === a.employeeId)?.name || '';
                     const empB = employees.find(e => e.id === b.employeeId)?.name || '';
                     if (empA !== empB) return empA.localeCompare(empB);
-                    
-                    // Then by Date
                     const dateA = a.type === 'range' ? a.startDate : a.date;
                     const dateB = b.type === 'range' ? b.startDate : b.date;
                     return dateA.localeCompare(dateB);
@@ -851,7 +844,14 @@
                             {mode==='single' ? (
                                 <>
                                     <Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required/>
-                                    <div className="flex gap-4"><Input label="שעת התחלה" type="time" step="900" value={start} onChange={e=>setStart(e.target.value)} required/><Input label="שעת סיום" type="time" step="900" value={end} onChange={e=>setEnd(e.target.value)} required/></div>
+                                    <div className="flex gap-4">
+                                        <div className="flex-1">
+                                            <Input label="שעת התחלה" type="time" step="900" value={start} onChange={e=>setStart(e.target.value)} required/>
+                                        </div>
+                                        <div className="flex-1">
+                                            <Input label="שעת סיום" type="time" step="900" value={end} onChange={e=>setEnd(e.target.value)} required/>
+                                        </div>
+                                    </div>
                                 </>
                             ) : (
                                 <><Input label="מ" type="date" value={sDate} onChange={e=>setSDate(e.target.value)} required/><Input label="עד" type="date" value={eDate} onChange={e=>setEDate(e.target.value)} required/></>
