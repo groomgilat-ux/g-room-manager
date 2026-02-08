@@ -39,6 +39,11 @@
         input[type="date"], input[type="time"], select {
             color-scheme: dark;
         }
+        /* Extra force for calendar icon visibility */
+        ::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -317,11 +322,13 @@
                     form101: fd.get('form101') === 'on', skills: fd.get('skills').split(',').map(s=>s.trim())
                 };
                 try {
-                    if(edit) await timeoutPromise(updateDoc(getDocRef('employees', edit.id), d), 3000);
-                    else await timeoutPromise(addDoc(getCollectionRef('employees'), d), 3000);
+                    const timeout = new Promise((_, r) => setTimeout(() => r(new Error("Timeout")), 5000));
+                    if(edit) await Promise.race([updateDoc(getDocRef('employees', edit.id), d), timeout]);
+                    else await Promise.race([addDoc(getCollectionRef('employees'), d), timeout]);
                     setOpen(false);
-                } catch(e) { if(e.message === 'Timeout') setOpen(false); else alert(e.message); } finally { setSaving(false); }
+                } catch(e) { if(e.message === 'Timeout') { alert('נשלח'); setOpen(false); } else alert(e.message); } finally { setSaving(false); }
             };
+
             const del = async (id) => { if(confirm("למחוק?")) await deleteDoc(getDocRef('employees', id)); };
 
             return (
@@ -361,106 +368,11 @@
                                         <Input label="הסמכות (מופרד בפסיק)" name="skills" className="col-span-2" defaultValue={edit?.skills?.join(', ')}/>
                                     </div>
                                     <div className="flex gap-2"><input type="checkbox" name="form101" defaultChecked={edit?.form101}/> <label>טופס 101</label></div>
-                                    <div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'שמור'}</Button></div>
+                                    <div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'שמור בענן'}</Button></div>
                                 </form>
                             </div>
                         </div>
                     )}
-                </div>
-            );
-        };
-
-        const AdminConstraints = ({ employees, constraints, settings }) => {
-            const [offset, setOffset] = useState(0);
-            const days = useMemo(() => Array.from({length:7}, (_,i) => {
-                const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d;
-            }), [offset]);
-            const hours = Array.from({length:17}, (_,i) => i+8);
-
-            const getStatus = (d, h) => {
-                const dStr = d.toISOString().slice(0,10);
-                const dayName = d.toLocaleDateString('en-US', {weekday:'long'});
-                const biz = settings.openingHours[dayName];
-                if (!biz) return -1;
-                const open = parseInt(biz.start.split(':')[0]);
-                const close = parseInt(biz.end.split(':')[0]);
-                const effClose = close < open ? close+24 : close;
-                const check = h < open && h+24 < effClose ? h+24 : h;
-                if (check < open || check >= effClose) return -1;
-
-                let count = 0;
-                employees.forEach(emp => {
-                    const busy = constraints.some(c => {
-                        if (c.employeeId !== emp.id || c.status === 'rejected') return false; // Ignore rejected
-                        if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
-                        const cs = parseInt(c.startTime.split(':')[0]);
-                        const ce = parseInt(c.endTime.split(':')[0]);
-                        return c.date === dStr && h >= cs && h < ce;
-                    });
-                    if (!busy) count++;
-                });
-                return count;
-            };
-
-            const handleStatus = async (id, status) => {
-                await updateDoc(getDocRef('constraints', id), { status });
-            };
-
-            const pending = constraints.filter(c => c.status === 'pending');
-
-            return (
-                <div className="space-y-6">
-                    {pending.length > 0 && (
-                        <Card title="בקשות אילוץ ממתינות לאישור">
-                            <div className="space-y-2">
-                                {pending.map(c => {
-                                    const emp = employees.find(e => e.id === c.employeeId);
-                                    return (
-                                        <div key={c.id} className="flex justify-between items-center bg-gray-800 p-2 rounded">
-                                            <div>
-                                                <span className="font-bold text-indigo-400">{emp?.name}</span>: 
-                                                {c.type === 'range' ? ` חופש ${formatDateIL(c.startDate)} - ${formatDateIL(c.endDate)}` : ` ${formatDateIL(c.date)} (${c.startTime}-${c.endTime})`}
-                                                <div className="text-xs text-gray-400">{c.note}</div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Button size="sm" variant="success" onClick={() => handleStatus(c.id, 'approved')}><Check size={14}/></Button>
-                                                <Button size="sm" variant="danger" onClick={() => handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </Card>
-                    )}
-
-                    <Card title="מפת זמינות">
-                        <div className="flex justify-between mb-4">
-                            <Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button>
-                            <span>{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())}</span>
-                            <Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <div className="min-w-[800px]">
-                                <div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold">
-                                    <div className="bg-gray-900 p-2">שעה</div>
-                                    {days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm">{d.toLocaleDateString('he-IL', {weekday:'short'})} {d.getDate()}</div>)}
-                                </div>
-                                {hours.map(h => (
-                                    <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs">
-                                        <div className="bg-gray-900 p-2">{h.toString().padStart(2,'0')}:00</div>
-                                        {days.map((d,i) => {
-                                            const stat = getStatus(d, h);
-                                            let bg = 'bg-green-900/40';
-                                            if (stat === -1) bg = 'bg-gray-800/30 opacity-50';
-                                            else if (stat === 0) bg = 'bg-red-900/60';
-                                            else if (stat === 1) bg = 'bg-yellow-900/60';
-                                            return <div key={i} className={`p-2 rounded ${bg}`}>{stat > -1 ? stat : ''}</div>
-                                        })}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </Card>
                 </div>
             );
         };
@@ -491,6 +403,10 @@
                 } catch(e) { if(e.message==='Timeout') setManual(false); else alert(e.message); } finally { setSaving(false); }
             };
 
+            const doExport = () => {
+                exportToXLS(report, `Salary_Report_${month}.xls`);
+            };
+
             const sendMail = (emp) => {
                 const subj = replacePlaceholders(settings.emailTemplate.subject, { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] });
                 const body = replacePlaceholders(settings.emailTemplate.body, { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] });
@@ -508,7 +424,7 @@
                         <div><h2 className="text-xl font-bold">דוחות שכר</h2><p>סה"כ לתשלום: <span className="text-green-400 font-bold">₪{totalPay.toLocaleString()}</span></p></div>
                         <div className="flex gap-2">
                             <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2"/>
-                            <Button onClick={() => exportToXLS(report, `Salary_Report_${month}.xls`)} variant="success"><Download size={16}/> אקסל</Button>
+                            <Button onClick={doExport} variant="success"><Download size={16}/> אקסל</Button>
                             <Button onClick={() => setManual(true)} variant="secondary"><Plus size={16}/> ידני</Button>
                         </div>
                     </div>
@@ -558,6 +474,89 @@
                             </div>
                         </div>
                     )}
+                </div>
+            );
+        };
+
+        const AdminConstraints = ({ employees, constraints, settings }) => {
+            const [offset, setOffset] = useState(0);
+            const days = useMemo(() => Array.from({length:7}, (_,i) => {
+                const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d;
+            }), [offset]);
+            const hours = Array.from({length:17}, (_,i) => i+8);
+
+            const getStatus = (d, h) => {
+                const dStr = d.toISOString().slice(0,10);
+                const dayName = d.toLocaleDateString('en-US', {weekday:'long'});
+                const biz = settings.openingHours[dayName];
+                if (!biz) return -1;
+                const open = parseInt(biz.start.split(':')[0]);
+                const close = parseInt(biz.end.split(':')[0]);
+                const effClose = close < open ? close+24 : close;
+                const check = h < open && h+24 < effClose ? h+24 : h;
+                if (check < open || check >= effClose) return -1;
+
+                let count = 0;
+                employees.forEach(emp => {
+                    const busy = constraints.some(c => {
+                        if (c.employeeId !== emp.id || c.status === 'rejected') return false; // Ignore rejected
+                        if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
+                        const cs = parseInt(c.startTime.split(':')[0]);
+                        const ce = parseInt(c.endTime.split(':')[0]);
+                        return c.date === dStr && h >= cs && h < ce;
+                    });
+                    if (!busy) count++;
+                });
+                return count;
+            };
+
+            const dayTitle = (d) => d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'});
+
+            return (
+                <div className="space-y-6">
+                    <Card title="מפת זמינות">
+                        <div className="flex justify-between mb-4">
+                            <Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button>
+                            <span>{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())}</span>
+                            <Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <div className="min-w-[800px]">
+                                <div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold">
+                                    <div className="bg-gray-900 p-2">שעה</div>
+                                    {days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm">{dayTitle(d)}</div>)}
+                                </div>
+                                {hours.map(h => (
+                                    <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs">
+                                        <div className="bg-gray-900 p-2">{h.toString().padStart(2,'0')}:00</div>
+                                        {days.map((d,i) => {
+                                            const stat = getStatus(d, h);
+                                            let bg = 'bg-green-900/40';
+                                            if (stat === -1) bg = 'bg-gray-800/30 opacity-50';
+                                            else if (stat === 0) bg = 'bg-red-900/60';
+                                            else if (stat === 1) bg = 'bg-yellow-900/60';
+                                            return <div key={i} className={`p-2 rounded ${bg}`}>{stat > -1 ? stat : ''}</div>
+                                        })}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </Card>
+                    <Card title="אילוצים ברשימה">
+                        <table className="w-full text-right text-sm">
+                            <thead className="text-gray-400"><tr><th>עובד</th><th>תאריך</th><th>שעות</th></tr></thead>
+                            <tbody>
+                                {constraints.map(c => {
+                                    const emp = employees.find(e => e.id === c.employeeId);
+                                    return <tr key={c.id} className="border-b border-gray-800">
+                                        <td className="py-2">{emp?.name}</td>
+                                        <td>{c.type==='range' ? `${c.startDate}-${c.endDate}` : c.date}</td>
+                                        <td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td>
+                                    </tr>
+                                })}
+                            </tbody>
+                        </table>
+                    </Card>
                 </div>
             );
         };
@@ -672,6 +671,8 @@
                 await addDoc(getCollectionRef('shifts'), { employeeId: employee.id, date, startTime: start, gamesCount: Number(games), room, approved: false }); // Approved false = Pending initially
                 alert('המשמרת נשלחה'); setStart(''); setGames(1);
             };
+            
+            const del = async (id) => { if(confirm("למחוק משמרת זו?")) await deleteDoc(getDocRef('shifts', id)); };
             const myShifts = shifts.filter(s => s.employeeId === employee.id).sort((a,b) => b.date.localeCompare(a.date));
 
             return (
@@ -689,7 +690,7 @@
                     <Card title="היסטוריה">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="text-gray-400 border-b border-gray-800"><tr><th>תאריך</th><th>שעות</th><th>חדר</th><th>סטטוס</th></tr></thead>
+                                <thead className="text-gray-400 border-b border-gray-800"><tr><th>תאריך</th><th>שעות</th><th>חדר</th><th>סטטוס</th><th>מחק</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800">
                                     {myShifts.map(s => (
                                         <tr key={s.id}>
@@ -697,6 +698,7 @@
                                             <td>{s.startTime}</td>
                                             <td>{s.room}</td>
                                             <td>{s.approved ? <span className="text-green-400">אושר</span> : <span className="text-yellow-400">ממתין</span>}</td>
+                                            <td><button onClick={() => del(s.id)} className="text-red-400"><Trash2 size={14}/></button></td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -754,7 +756,7 @@
                             ) : (
                                 <><Input label="מ" type="date" value={sDate} onChange={e=>setSDate(e.target.value)} required/><Input label="עד" type="date" value={eDate} onChange={e=>setEDate(e.target.value)} required/></>
                             )}
-                            <Input label="הערה" value={note} onChange={e=>setNote(e.target.value)} />
+                            <Input label="מהות האילוץ" value={note} onChange={e=>setNote(e.target.value)} />
                             <div className="flex gap-2">
                                 {editId && <Button type="button" variant="secondary" onClick={()=>{setEditId(null); setNote('');}} className="flex-1">ביטול</Button>}
                                 <Button type="submit" className="flex-1">{editId ? 'עדכן' : 'שלח'}</Button>
@@ -764,12 +766,14 @@
                     <Card title="האילוצים שלי">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="text-gray-400 border-b border-gray-800"><tr><th>תאריך</th><th>שעות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                                <thead className="text-gray-400 border-b border-gray-800"><tr><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800">
                                     {myCons.map(c => (
                                         <tr key={c.id}>
                                             <td className="py-2">{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td>
+                                            <td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td>
                                             <td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td>
+                                            <td>{c.note}</td>
                                             <td><StatusBadge status={c.status || 'pending'} /></td>
                                             <td className="flex gap-2 py-2">
                                                 {c.status !== 'approved' && <button onClick={()=>edit(c)} className="text-indigo-400"><Edit2 size={14}/></button>}
