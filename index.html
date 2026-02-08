@@ -787,7 +787,7 @@
                     <Card title="היסטוריה">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>שעות</th><th>חדר</th><th>משחקים</th><th>סטטוס</th><th>מחק</th></tr></thead>
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>טווח שעות</th><th>חדר</th><th>כמות קבוצות</th><th>סטטוס</th><th>מחק</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
                                     {myShifts.map(s => {
                                         const endTime = addTime(s.startTime, s.gamesCount * 90);
