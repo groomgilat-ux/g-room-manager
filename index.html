@@ -26,12 +26,24 @@
     </script>
 
     <style>
-        body { background-color: #030712; color: white; font-family: sans-serif; }
+        :root {
+            --app-bg: #030712;
+            --app-text: #ffffff;
+            --app-card-bg: rgba(255, 255, 255, 0.05);
+            --app-accent: #8b5cf6;
+        }
+        body { background-color: var(--app-bg); color: var(--app-text); font-family: sans-serif; transition: background-color 0.3s, color 0.3s; }
+        
+        /* Overrides for dynamic theming */
+        .card-bg { background-color: var(--app-card-bg); border: 1px solid rgba(255,255,255,0.1); }
+        .text-dynamic { color: var(--app-text) !important; }
+        .icon-dynamic { stroke: var(--app-text); }
+        
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1f2937; }
-        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
         .fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
@@ -39,7 +51,6 @@
         input[type="date"], input[type="time"], select {
             color-scheme: dark;
         }
-        /* Extra force for calendar icon visibility */
         ::-webkit-calendar-picker-indicator {
             filter: invert(1);
             cursor: pointer;
@@ -92,8 +103,9 @@
             senderEmail: 'manager@g-room.co.il',
             adminCode: 'admin123',
             logo: null,
-            primaryColor: '#8b5cf6',
-            secondaryColor: '#1f2937',
+            primaryColor: '#030712', // Background color
+            secondaryColor: '#ffffff', // Text color
+            accentColor: '#8b5cf6', // Brand color
             emailTemplate: {
                 subject: 'G-Room: תלוש שכר לחודש {month}/{year}',
                 body: 'היי {name},\n\nמצורף תלוש השכר שלך עבור חודש {month}/{year}.\n\nבברכה,\nהנהלת G-Room'
@@ -168,15 +180,15 @@
         };
 
         const Card = ({ title, children, className = '' }) => (
-            <div className={`bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-xl ${className}`}>
-                {title && <h3 className="text-xl font-bold text-gray-100 mb-4 border-b border-gray-800 pb-2">{title}</h3>}
-                {children}
+            <div className={`card-bg rounded-xl p-6 shadow-xl ${className}`}>
+                {title && <h3 className="text-xl font-bold text-dynamic mb-4 border-b border-gray-700 pb-2">{title}</h3>}
+                <div className="text-dynamic">{children}</div>
             </div>
         );
 
         const Input = ({ label, type = "text", value, onChange, className = "", ...props }) => (
             <div className={`flex flex-col gap-1 ${className}`}>
-                {label && <label className="text-sm text-gray-400 font-medium">{label}</label>}
+                {label && <label className="text-sm opacity-70 font-medium text-dynamic">{label}</label>}
                 <input type={type} value={value} onChange={onChange} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" {...props} />
             </div>
         );
@@ -222,7 +234,13 @@
                 return () => unsub.forEach(u => u());
             }, [user]);
 
-            useEffect(() => document.documentElement.style.setProperty('--primary-color', settings.primaryColor), [settings.primaryColor]);
+            useEffect(() => {
+                const r = document.documentElement.style;
+                r.setProperty('--app-bg', settings.primaryColor || '#030712');
+                r.setProperty('--app-text', settings.secondaryColor || '#ffffff');
+                // Calculate card bg (slightly lighter/different opacity based on bg)
+                r.setProperty('--app-card-bg', settings.primaryColor === '#ffffff' ? '#f3f4f6' : 'rgba(255, 255, 255, 0.05)');
+            }, [settings]);
 
             const doLogin = () => {
                 if ((login.empId === 'admin' && login.code === settings.adminCode) || (login.empId === 'admin' && data.employees.length === 0 && login.code === 'admin123')) {
@@ -237,12 +255,12 @@
             if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-indigo-500"><Loader className="animate-spin w-10 h-10" /></div>;
 
             if (!currentUser) return (
-                <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-4">
-                    <div className="max-w-md w-full bg-gray-900 p-8 rounded-2xl border border-gray-800 text-center relative">
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="max-w-md w-full card-bg p-8 rounded-2xl text-center relative">
                         <div className={`absolute top-4 right-4 w-3 h-3 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></div>
                         <div className="mb-8">
-                            {settings.logo ? <img src={settings.logo} className="h-24 mx-auto mb-4 object-contain"/> : <div className="h-24 w-24 bg-indigo-900/50 rounded-full mx-auto flex items-center justify-center mb-4"><Lock size={40}/></div>}
-                            <h1 className="text-3xl font-bold">{settings.businessName}</h1>
+                            {settings.logo ? <img src={settings.logo} className="h-24 mx-auto mb-4 object-contain"/> : <div className="h-24 w-24 bg-indigo-900/50 rounded-full mx-auto flex items-center justify-center mb-4"><Lock size={40} className="icon-dynamic"/></div>}
+                            <h1 className="text-3xl font-bold text-dynamic">{settings.businessName}</h1>
                         </div>
                         <div className="space-y-4">
                             <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3" value={login.empId} onChange={e => setLogin({...login, empId: e.target.value})}>
@@ -259,12 +277,12 @@
             );
 
             return (
-                <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
-                    <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50 h-16 flex items-center justify-between px-6">
+                <div className="min-h-screen font-sans">
+                    <header className="card-bg border-b border-gray-800 sticky top-0 z-50 h-16 flex items-center justify-between px-6">
                         <div className="flex items-center gap-3">
                             {settings.logo && <img src={settings.logo} className="h-8 w-8 rounded object-cover"/>}
-                            <span className="font-bold text-xl">{settings.businessName}</span>
-                            <span className="text-xs bg-gray-800 px-2 py-1 rounded-full border border-gray-700 flex items-center gap-2">
+                            <span className="font-bold text-xl text-dynamic">{settings.businessName}</span>
+                            <span className="text-xs bg-gray-800 text-white px-2 py-1 rounded-full border border-gray-700 flex items-center gap-2">
                                 {currentUser.role === 'admin' ? 'מנהל' : `שלום, ${currentUser.data.name}`}
                                 <div className={`w-2 h-2 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500'}`}></div>
                             </span>
@@ -286,13 +304,15 @@
             const [tab, setTab] = useState('employees');
             const pendingReq = data.requests.filter(r => r.status === 'pending');
             const pendingCons = data.constraints.filter(c => c.status === 'pending');
+            const pendingShifts = data.shifts.filter(s => !s.approved);
             
             return (
                 <div className="space-y-6">
                     <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-2">
                         {[{id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
-                            <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'text-gray-400'}`}><m.i size={18}/> {m.l} 
-                            {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1 rounded-full">{pendingCons.length}</span>}
+                            <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}><m.i size={18} className="icon-dynamic"/> {m.l} 
+                            {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
+                            {m.id === 'shifts' && pendingShifts.length > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingShifts.length}</span>}
                             </button>
                         )}
                         {pendingReq.length > 0 && <button onClick={()=>setTab('requests')} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg ml-auto transition-colors ${tab==='requests'?'bg-indigo-600/10 border-b-2 border-indigo-500':'text-yellow-400'}`}><Bell size={18} className="animate-bounce"/><span className="font-bold">{pendingReq.length}</span></button>}
@@ -333,7 +353,7 @@
 
             return (
                 <div className="space-y-6">
-                    <div className="flex justify-between"><h2 className="text-2xl font-bold">ניהול עובדים</h2><Button onClick={()=>{setEdit(null); setOpen(true);}}><Plus size={18}/> הוסף עובד</Button></div>
+                    <div className="flex justify-between"><h2 className="text-2xl font-bold text-dynamic">ניהול עובדים</h2><Button onClick={()=>{setEdit(null); setOpen(true);}}><Plus size={18}/> הוסף עובד</Button></div>
                     <div className="grid md:grid-cols-3 gap-4">
                         {employees.map(e => (
                             <Card key={e.id} className="relative group hover:border-indigo-500">
@@ -342,12 +362,12 @@
                                     <button onClick={()=>del(e.id)} className="bg-gray-900 p-1 rounded text-red-400"><Trash2 size={16}/></button>
                                 </div>
                                 <h3 className="font-bold text-lg">{e.name}</h3>
-                                <p className="text-sm text-gray-400">{e.phone}</p>
-                                <div className="mt-2 text-sm text-gray-300">
+                                <p className="text-sm opacity-70">{e.phone}</p>
+                                <div className="mt-2 text-sm opacity-60">
                                     <div>קוד: {e.code}</div>
                                     <div>תעריף: ₪{e.wagePerGame}</div>
                                     <div>יום הולדת: {formatDateIL(e.birthday) || '-'}</div>
-                                    <div className="text-xs text-gray-500 mt-1">{e.skills.join(', ')}</div>
+                                    <div className="text-xs mt-1">{e.skills.join(', ')}</div>
                                 </div>
                             </Card>
                         ))}
@@ -383,7 +403,9 @@
             const [selEmp, setSelEmp] = useState('');
             const [saving, setSaving] = useState(false);
             
-            const monthlyShifts = shifts.filter(s => s.date.startsWith(month));
+            const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.approved);
+            const pendingShifts = shifts.filter(s => !s.approved);
+
             const report = employees.map(emp => {
                 const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id);
                 const totalWage = empShifts.reduce((acc, s) => acc + (Number(s.gamesCount) * emp.wagePerGame), 0);
@@ -403,6 +425,15 @@
                 } catch(e) { if(e.message==='Timeout') setManual(false); else alert(e.message); } finally { setSaving(false); }
             };
 
+            const handleShiftStatus = async (id, approved) => {
+                if (!approved && !confirm("האם לדחות ולמחוק משמרת זו?")) return;
+                if (approved) {
+                    await updateDoc(getDocRef('shifts', id), { approved: true });
+                } else {
+                    await deleteDoc(getDocRef('shifts', id));
+                }
+            };
+
             const doExport = () => {
                 exportToXLS(report, `Salary_Report_${month}.xls`);
             };
@@ -420,29 +451,57 @@
 
             return (
                 <div className="space-y-6">
-                    <div className="flex justify-between items-center bg-gray-900 p-4 rounded-xl border border-gray-800">
-                        <div><h2 className="text-xl font-bold">דוחות שכר</h2><p>סה"כ לתשלום: <span className="text-green-400 font-bold">₪{totalPay.toLocaleString()}</span></p></div>
+                    {/* Pending Shifts Section */}
+                    {pendingShifts.length > 0 && (
+                        <Card title="משמרות ממתינות לאישור">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-right text-sm">
+                                    <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך</th><th>שעות</th><th>חדר</th><th>פעולות</th></tr></thead>
+                                    <tbody className="divide-y divide-gray-800">
+                                        {pendingShifts.map(s => {
+                                            const e = employees.find(emp => emp.id === s.employeeId);
+                                            return (
+                                                <tr key={s.id} className="hover:bg-gray-800/30">
+                                                    <td className="py-2 font-bold">{e?.name}</td>
+                                                    <td>{formatDateIL(s.date)}</td>
+                                                    <td>{s.startTime} ({s.gamesCount} מש')</td>
+                                                    <td>{s.room}</td>
+                                                    <td className="flex gap-2 py-2">
+                                                        <Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, true)}><Check size={14}/></Button>
+                                                        <Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, false)}><XIcon size={14}/></Button>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Card>
+                    )}
+
+                    <div className="flex justify-between items-center card-bg p-4 rounded-xl">
+                        <div><h2 className="text-xl font-bold text-dynamic">דוחות שכר ({month})</h2><p className="text-dynamic opacity-80">סה"כ לתשלום: <span className="text-green-400 font-bold">₪{totalPay.toLocaleString()}</span></p></div>
                         <div className="flex gap-2">
-                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2"/>
+                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
                             <Button onClick={doExport} variant="success"><Download size={16}/> אקסל</Button>
                             <Button onClick={() => setManual(true)} variant="secondary"><Plus size={16}/> ידני</Button>
                         </div>
                     </div>
                     <div className="space-y-4">
                         {report.map(r => (
-                            <div key={r.id} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                            <div key={r.id} className="card-bg rounded-xl overflow-hidden">
                                 <div className="p-4 flex justify-between items-center">
-                                    <div className="flex items-center gap-3"><div className="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold">{r.name[0]}</div><span className="text-lg font-bold">{r.name}</span></div>
+                                    <div className="flex items-center gap-3"><div className="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold text-white">{r.name[0]}</div><span className="text-lg font-bold text-dynamic">{r.name}</span></div>
                                     <div className="text-green-400 font-bold text-xl">₪{r.totalWage}</div>
                                     <Button size="sm" variant="outline" onClick={() => sendMail(r)}><Mail size={16}/></Button>
                                 </div>
                                 {r.empShifts.length > 0 && (
-                                    <div className="bg-gray-950/50 p-2 text-sm border-t border-gray-800">
+                                    <div className="bg-black/20 p-2 text-sm border-t border-gray-800">
                                         <div className="grid grid-cols-6 text-gray-500 mb-2 px-2 text-xs font-bold"><div>תאריך</div><div>שעה</div><div>חדר</div><div>משחקים</div><div>סטטוס</div><div>מחק</div></div>
                                         {r.empShifts.map(s => (
-                                            <div key={s.id} className="grid grid-cols-6 py-2 px-2 border-b border-gray-800 items-center hover:bg-gray-800/30">
+                                            <div key={s.id} className="grid grid-cols-6 py-2 px-2 border-b border-gray-800 items-center hover:bg-white/5 text-dynamic opacity-80">
                                                 <div>{formatDateIL(s.date)}</div><div>{s.startTime}</div><div>{s.room}</div><div>{s.gamesCount}</div>
-                                                <StatusBadge status={s.approved ? 'approved' : 'rejected'} /> {/* Assuming manual deletion acts as rejection or shift is simply gone */}
+                                                <div className="text-green-400"><CheckCircle size={14}/></div>
                                                 <button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('shifts', s.id))} className="text-red-500"><Trash2 size={14}/></button>
                                             </div>
                                         ))}
@@ -499,7 +558,7 @@
                 let count = 0;
                 employees.forEach(emp => {
                     const busy = constraints.some(c => {
-                        if (c.employeeId !== emp.id || c.status === 'rejected') return false; // Ignore rejected
+                        if (c.employeeId !== emp.id || c.status === 'rejected') return false; 
                         if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
                         const cs = parseInt(c.startTime.split(':')[0]);
                         const ce = parseInt(c.endTime.split(':')[0]);
@@ -509,12 +568,16 @@
                 });
                 return count;
             };
+            
+            const handleStatus = async (id, status) => {
+                await updateDoc(getDocRef('constraints', id), { status });
+            };
 
             const dayTitle = (d) => d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'});
 
             return (
                 <div className="space-y-6">
-                    <Card title="מפת זמינות">
+                    <Card title="מפת זמינות (ירוק=פנוי, אדום=אין עובדים)">
                         <div className="flex justify-between mb-4">
                             <Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button>
                             <span>{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())}</span>
@@ -522,36 +585,47 @@
                         </div>
                         <div className="overflow-x-auto">
                             <div className="min-w-[800px]">
-                                <div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold">
-                                    <div className="bg-gray-900 p-2">שעה</div>
-                                    {days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm">{dayTitle(d)}</div>)}
+                                <div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold text-dynamic">
+                                    <div className="bg-gray-800 p-2 rounded">שעה</div>
+                                    {days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm rounded">{dayTitle(d)}</div>)}
                                 </div>
                                 {hours.map(h => (
                                     <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs">
-                                        <div className="bg-gray-900 p-2">{h.toString().padStart(2,'0')}:00</div>
+                                        <div className="bg-gray-800 p-2 rounded text-dynamic">{h.toString().padStart(2,'0')}:00</div>
                                         {days.map((d,i) => {
                                             const stat = getStatus(d, h);
-                                            let bg = 'bg-green-900/40';
-                                            if (stat === -1) bg = 'bg-gray-800/30 opacity-50';
+                                            let bg = 'bg-green-900/60';
+                                            if (stat === -1) bg = 'bg-gray-800/20 opacity-30';
                                             else if (stat === 0) bg = 'bg-red-900/60';
                                             else if (stat === 1) bg = 'bg-yellow-900/60';
-                                            return <div key={i} className={`p-2 rounded ${bg}`}>{stat > -1 ? stat : ''}</div>
+                                            return <div key={i} className={`p-2 rounded ${bg} text-white font-bold`}>{stat > -1 ? stat : ''}</div>
                                         })}
                                     </div>
                                 ))}
                             </div>
                         </div>
                     </Card>
-                    <Card title="אילוצים ברשימה">
+                    <Card title="רשימת אילוצים">
                         <table className="w-full text-right text-sm">
-                            <thead className="text-gray-400"><tr><th>עובד</th><th>תאריך</th><th>שעות</th></tr></thead>
-                            <tbody>
+                            <thead className="text-gray-400"><tr><th>עובד</th><th>תאריך</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                            <tbody className="text-dynamic opacity-90">
                                 {constraints.map(c => {
                                     const emp = employees.find(e => e.id === c.employeeId);
                                     return <tr key={c.id} className="border-b border-gray-800">
-                                        <td className="py-2">{emp?.name}</td>
-                                        <td>{c.type==='range' ? `${c.startDate}-${c.endDate}` : c.date}</td>
+                                        <td className="py-2 font-bold">{emp?.name}</td>
+                                        <td>{c.type==='range' ? `${formatDateIL(c.startDate)} - ${formatDateIL(c.endDate)}` : formatDateIL(c.date)}</td>
                                         <td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td>
+                                        <td>{c.note}</td>
+                                        <td><StatusBadge status={c.status}/></td>
+                                        <td className="flex gap-2 py-1">
+                                            {c.status === 'pending' && (
+                                                <>
+                                                 <Button size="sm" variant="success" onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button>
+                                                 <Button size="sm" variant="danger" onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button>
+                                                </>
+                                            )}
+                                            <button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button>
+                                        </td>
                                     </tr>
                                 })}
                             </tbody>
@@ -570,7 +644,7 @@
             };
             return (
                 <div className="space-y-4">
-                    <h2 className="text-xl font-bold">בקשות עדכון</h2>
+                    <h2 className="text-xl font-bold text-dynamic">בקשות עדכון</h2>
                     {requests.length === 0 && <p className="text-gray-500">אין בקשות חדשות</p>}
                     {requests.map(r => {
                         const emp = employees.find(e => e.id === r.employeeId);
@@ -578,7 +652,7 @@
                             <Card key={r.id} className="border-r-4 border-yellow-500 flex justify-between items-start">
                                 <div>
                                     <h3 className="font-bold text-lg mb-1">{emp?.name}</h3>
-                                    <div className="text-sm text-gray-400 space-y-1">
+                                    <div className="text-sm opacity-70 space-y-1">
                                         <p>טלפון: {r.newData.phone}</p><p>מייל: {r.newData.email}</p><p>כתובת: {r.newData.address}</p><p>יום הולדת: {formatDateIL(r.newData.birthday)}</p>
                                     </div>
                                 </div>
@@ -601,21 +675,26 @@
 
             return (
                 <div className="grid md:grid-cols-2 gap-6">
-                    <Card title="כללי">
+                    <Card title="עיצוב ומיתוג">
                         <div className="space-y-4">
                             <Input label="שם העסק" value={settings.businessName} onChange={e => update('businessName', e.target.value)} />
-                            <Input label="קוד כניסה למנהל" value={settings.adminCode} onChange={e => update('adminCode', e.target.value)} />
-                            <Input label="כתובת מייל לשליחה" value={settings.senderEmail} onChange={e => update('senderEmail', e.target.value)} />
-                            <div className="space-y-1"><label className="text-sm text-gray-400">לוגו (URL)</label><input className="w-full bg-gray-800 border border-gray-700 rounded p-2" value={settings.logo || ''} onChange={e => update('logo', e.target.value)} /></div>
-                            <div className="space-y-1"><label className="text-sm text-gray-400">צבע ראשי</label><input type="color" value={settings.primaryColor} onChange={e => update('primaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer"/></div>
+                            <div className="space-y-1"><label className="text-sm opacity-70">צבע רקע (ראשי)</label><input type="color" value={settings.primaryColor} onChange={e => update('primaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div>
+                            <div className="space-y-1"><label className="text-sm opacity-70">צבע טקסט (משני)</label><input type="color" value={settings.secondaryColor} onChange={e => update('secondaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div>
+                            <div className="space-y-1"><label className="text-sm opacity-70">לוגו (URL)</label><input className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white" value={settings.logo || ''} onChange={e => update('logo', e.target.value)} /></div>
                         </div>
                     </Card>
-                    <div className="space-y-6">
+                    <Card title="מערכת">
+                        <div className="space-y-4">
+                             <Input label="קוד כניסה למנהל" value={settings.adminCode} onChange={e => update('adminCode', e.target.value)} />
+                             <Input label="כתובת מייל לשליחה" value={settings.senderEmail} onChange={e => update('senderEmail', e.target.value)} />
+                        </div>
+                    </Card>
+                    <div className="col-span-full grid md:grid-cols-2 gap-6">
                         <Card title="תבנית אימייל">
                             <div className="space-y-4">
                                 <Input label="נושא" value={settings.emailTemplate.subject} onChange={e => handleTemplate('subject', e.target.value)} />
                                 <div className="space-y-1">
-                                    <label className="text-sm text-gray-400">תוכן (משתנים: {`{name}, {month}, {year}`})</label>
+                                    <label className="text-sm opacity-70">תוכן (משתנים: {`{name}, {month}, {year}`})</label>
                                     <textarea className="w-full bg-gray-800 border border-gray-700 rounded p-2 h-32 text-white" value={settings.emailTemplate.body} onChange={e => handleTemplate('body', e.target.value)} />
                                 </div>
                             </div>
@@ -624,7 +703,7 @@
                             {days.map(d => {
                                 const h = settings.openingHours[d] || {start:'00:00', end:'00:00'};
                                 return (
-                                    <div key={d} className="flex justify-between items-center my-2 text-sm">
+                                    <div key={d} className="flex justify-between items-center my-2 text-sm text-dynamic">
                                         <span className="w-16 font-bold">{hebrewDays[d]}</span>
                                         <div className="flex gap-2">
                                             <input type="time" value={h.start} onChange={e => update('openingHours', {...settings.openingHours, [d]: {...h, start: e.target.value}})} className="bg-gray-800 rounded p-1"/>
@@ -645,9 +724,9 @@
             const [tab, setTab] = useState('report');
             return (
                 <div className="space-y-6">
-                    <div className="flex bg-gray-900 p-1 rounded-lg w-fit">
+                    <div className="flex card-bg p-1 rounded-lg w-fit">
                         {['report', 'constraints', 'profile'].map(t => (
-                            <button key={t} onClick={()=>setTab(t)} className={`px-6 py-2 rounded ${tab===t?'bg-indigo-600':''}`}>{t==='report'?'דיווח':t==='constraints'?'אילוצים':'פרופיל'}</button>
+                            <button key={t} onClick={()=>setTab(t)} className={`px-6 py-2 rounded text-dynamic ${tab===t?'bg-indigo-600 text-white':''}`}>{t==='report'?'דיווח':t==='constraints'?'אילוצים':'פרופיל'}</button>
                         ))}
                     </div>
                     {tab==='report' && <EmployeeReport employee={employee} shifts={shifts}/>}
@@ -669,7 +748,7 @@
                 const selDate = new Date(date);
                 if (selDate.getMonth() < today.getMonth() && today.getDate() > 3) return alert("לא ניתן לדווח על חודש שעבר אחרי ה-3 לחודש");
                 await addDoc(getCollectionRef('shifts'), { employeeId: employee.id, date, startTime: start, gamesCount: Number(games), room, approved: false }); // Approved false = Pending initially
-                alert('המשמרת נשלחה'); setStart(''); setGames(1);
+                alert('המשמרת נשלחה לאישור המנהל'); setStart(''); setGames(1);
             };
             
             const del = async (id) => { if(confirm("למחוק משמרת זו?")) await deleteDoc(getDocRef('shifts', id)); };
@@ -681,17 +760,17 @@
                         <form onSubmit={submit} className="space-y-4">
                             <Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required />
                             <Input label="שעה" type="time" value={start} onChange={e=>setStart(e.target.value)} required />
-                            <label className="block text-sm text-gray-400">חדר</label>
-                            <select className="w-full bg-gray-800 p-2 rounded" value={room} onChange={e=>setRoom(e.target.value)}>{employee.skills.map(s=><option key={s} value={s}>{s}</option>)}</select>
+                            <label className="block text-sm opacity-70 text-dynamic">חדר</label>
+                            <select className="w-full bg-gray-800 p-2 rounded text-white" value={room} onChange={e=>setRoom(e.target.value)}>{employee.skills.map(s=><option key={s} value={s}>{s}</option>)}</select>
                             <Input label="משחקים" type="number" value={games} onChange={e=>setGames(e.target.value)} required />
-                            <Button type="submit" className="w-full">שלח</Button>
+                            <Button type="submit" className="w-full">שלח לאישור</Button>
                         </form>
                     </Card>
                     <Card title="היסטוריה">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="text-gray-400 border-b border-gray-800"><tr><th>תאריך</th><th>שעות</th><th>חדר</th><th>סטטוס</th><th>מחק</th></tr></thead>
-                                <tbody className="divide-y divide-gray-800">
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>שעות</th><th>חדר</th><th>סטטוס</th><th>מחק</th></tr></thead>
+                                <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
                                     {myShifts.map(s => (
                                         <tr key={s.id}>
                                             <td className="py-2">{formatDateIL(s.date)}</td>
@@ -746,7 +825,7 @@
             return (
                 <div className="grid md:grid-cols-2 gap-6">
                     <Card title={editId ? "עריכת אילוץ" : "אילוץ חדש"}>
-                        <div className="flex gap-2 mb-4"><button onClick={()=>setMode('single')} className={`flex-1 p-1 rounded ${mode==='single'?'bg-indigo-600':''}`}>יום בודד</button><button onClick={()=>setMode('range')} className={`flex-1 p-1 rounded ${mode==='range'?'bg-indigo-600':''}`}>חופשה</button></div>
+                        <div className="flex gap-2 mb-4"><button onClick={()=>setMode('single')} className={`flex-1 p-1 rounded ${mode==='single'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>יום בודד</button><button onClick={()=>setMode('range')} className={`flex-1 p-1 rounded ${mode==='range'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>חופשה</button></div>
                         <form onSubmit={submit} className="space-y-4">
                             {mode==='single' ? (
                                 <>
@@ -766,12 +845,11 @@
                     <Card title="האילוצים שלי">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="text-gray-400 border-b border-gray-800"><tr><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
-                                <tbody className="divide-y divide-gray-800">
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                                <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
                                     {myCons.map(c => (
                                         <tr key={c.id}>
                                             <td className="py-2">{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td>
-                                            <td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td>
                                             <td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td>
                                             <td>{c.note}</td>
                                             <td><StatusBadge status={c.status || 'pending'} /></td>
@@ -817,10 +895,10 @@
                 <div className="grid md:grid-cols-2 gap-6">
                     <Card>
                         <div className="text-center">
-                            <h2 className="text-2xl font-bold">{employee.name}</h2>
+                            <h2 className="text-2xl font-bold text-dynamic">{employee.name}</h2>
                             <p className="text-indigo-400">{employee.skills.join(' • ')}</p>
                         </div>
-                        <div className="mt-4 space-y-2 text-sm text-gray-300">
+                        <div className="mt-4 space-y-2 text-sm text-dynamic opacity-80">
                             <div>טלפון: {employee.phone}</div>
                             <div>מייל: {employee.email}</div>
                             <div>יום הולדת: {formatDateIL(employee.birthday)}</div>
