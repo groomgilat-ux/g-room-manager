@@ -103,9 +103,8 @@
             senderEmail: 'manager@g-room.co.il',
             adminCode: 'admin123',
             logo: null,
-            primaryColor: '#030712', // Background color
-            secondaryColor: '#ffffff', // Text color
-            accentColor: '#8b5cf6', // Brand color
+            primaryColor: '#030712', 
+            secondaryColor: '#ffffff', 
             emailTemplate: {
                 subject: 'G-Room: תלוש שכר לחודש {month}/{year}',
                 body: 'היי {name},\n\nמצורף תלוש השכר שלך עבור חודש {month}/{year}.\n\nבברכה,\nהנהלת G-Room'
@@ -238,7 +237,7 @@
                 const r = document.documentElement.style;
                 r.setProperty('--app-bg', settings.primaryColor || '#030712');
                 r.setProperty('--app-text', settings.secondaryColor || '#ffffff');
-                // Calculate card bg (slightly lighter/different opacity based on bg)
+                // Calculate card bg
                 r.setProperty('--app-card-bg', settings.primaryColor === '#ffffff' ? '#f3f4f6' : 'rgba(255, 255, 255, 0.05)');
             }, [settings]);
 
@@ -303,8 +302,9 @@
         const AdminDashboard = ({ data, settings }) => {
             const [tab, setTab] = useState('employees');
             const pendingReq = data.requests.filter(r => r.status === 'pending');
+            // FIX: Badge counts now filter strictly for pending
             const pendingCons = data.constraints.filter(c => c.status === 'pending');
-            const pendingShifts = data.shifts.filter(s => !s.approved);
+            const pendingShifts = data.shifts.filter(s => s.status === 'pending');
             
             return (
                 <div className="space-y-6">
@@ -403,8 +403,9 @@
             const [selEmp, setSelEmp] = useState('');
             const [saving, setSaving] = useState(false);
             
-            const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.approved);
-            const pendingShifts = shifts.filter(s => !s.approved);
+            // FIX: Using status string instead of boolean approved
+            const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
+            const pendingShifts = shifts.filter(s => s.status === 'pending');
 
             const report = employees.map(emp => {
                 const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id);
@@ -419,19 +420,14 @@
                 try {
                     await timeoutPromise(addDoc(getCollectionRef('shifts'), {
                         employeeId: fd.get('employeeId'), date: fd.get('date'), startTime: fd.get('startTime'),
-                        gamesCount: Number(fd.get('gamesCount')), room: fd.get('room') || 'ידני', approved: true
+                        gamesCount: Number(fd.get('gamesCount')), room: fd.get('room') || 'ידני', status: 'approved'
                     }), 3000);
                     setManual(false);
                 } catch(e) { if(e.message==='Timeout') setManual(false); else alert(e.message); } finally { setSaving(false); }
             };
 
-            const handleShiftStatus = async (id, approved) => {
-                if (!approved && !confirm("האם לדחות ולמחוק משמרת זו?")) return;
-                if (approved) {
-                    await updateDoc(getDocRef('shifts', id), { approved: true });
-                } else {
-                    await deleteDoc(getDocRef('shifts', id));
-                }
+            const handleShiftStatus = async (id, newStatus) => {
+                await updateDoc(getDocRef('shifts', id), { status: newStatus });
             };
 
             const doExport = () => {
@@ -451,7 +447,7 @@
 
             return (
                 <div className="space-y-6">
-                    {/* Pending Shifts Section */}
+                    {/* Pending Shifts Section - New Request */}
                     {pendingShifts.length > 0 && (
                         <Card title="משמרות ממתינות לאישור">
                             <div className="overflow-x-auto">
@@ -467,8 +463,8 @@
                                                     <td>{s.startTime} ({s.gamesCount} מש')</td>
                                                     <td>{s.room}</td>
                                                     <td className="flex gap-2 py-2">
-                                                        <Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, true)}><Check size={14}/></Button>
-                                                        <Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, false)}><XIcon size={14}/></Button>
+                                                        <Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, 'approved')}><Check size={14}/></Button>
+                                                        <Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, 'rejected')}><XIcon size={14}/></Button>
                                                     </td>
                                                 </tr>
                                             )
@@ -575,9 +571,54 @@
 
             const dayTitle = (d) => d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'});
 
+            // FIX: Sorting Logic for constraints
+            const sortedConstraints = useMemo(() => {
+                return [...constraints].sort((a, b) => {
+                    // Sort by Employee Name
+                    const empA = employees.find(e => e.id === a.employeeId)?.name || '';
+                    const empB = employees.find(e => e.id === b.employeeId)?.name || '';
+                    if (empA !== empB) return empA.localeCompare(empB);
+                    
+                    // Then by Date
+                    const dateA = a.type === 'range' ? a.startDate : a.date;
+                    const dateB = b.type === 'range' ? b.startDate : b.date;
+                    return dateA.localeCompare(dateB);
+                });
+            }, [constraints, employees]);
+
             return (
                 <div className="space-y-6">
-                    <Card title="מפת זמינות (ירוק=פנוי, אדום=אין עובדים)">
+                    <Card title="רשימת אילוצים">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right text-sm">
+                                <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>סיבה</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                                <tbody className="text-dynamic opacity-90">
+                                    {sortedConstraints.map(c => {
+                                        const emp = employees.find(e => e.id === c.employeeId);
+                                        return <tr key={c.id} className="border-b border-gray-800 hover:bg-white/5">
+                                            <td className="py-2 font-bold">{emp?.name}</td>
+                                            <td>{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td>
+                                            <td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td>
+                                            <td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td>
+                                            <td>{c.note}</td>
+                                            <td><StatusBadge status={c.status || 'pending'}/></td>
+                                            <td className="flex gap-2 py-1">
+                                                {c.status === 'pending' && (
+                                                    <>
+                                                     <Button size="sm" variant="success" onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button>
+                                                     <Button size="sm" variant="danger" onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button>
+                                                    </>
+                                                )}
+                                                <button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button>
+                                            </td>
+                                        </tr>
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+
+                    <Card title="מפת זמינות">
                         <div className="flex justify-between mb-4">
                             <Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button>
                             <span>{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())}</span>
@@ -604,32 +645,6 @@
                                 ))}
                             </div>
                         </div>
-                    </Card>
-                    <Card title="רשימת אילוצים">
-                        <table className="w-full text-right text-sm">
-                            <thead className="text-gray-400"><tr><th>עובד</th><th>תאריך</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
-                            <tbody className="text-dynamic opacity-90">
-                                {constraints.map(c => {
-                                    const emp = employees.find(e => e.id === c.employeeId);
-                                    return <tr key={c.id} className="border-b border-gray-800">
-                                        <td className="py-2 font-bold">{emp?.name}</td>
-                                        <td>{c.type==='range' ? `${formatDateIL(c.startDate)} - ${formatDateIL(c.endDate)}` : formatDateIL(c.date)}</td>
-                                        <td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td>
-                                        <td>{c.note}</td>
-                                        <td><StatusBadge status={c.status}/></td>
-                                        <td className="flex gap-2 py-1">
-                                            {c.status === 'pending' && (
-                                                <>
-                                                 <Button size="sm" variant="success" onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button>
-                                                 <Button size="sm" variant="danger" onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button>
-                                                </>
-                                            )}
-                                            <button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button>
-                                        </td>
-                                    </tr>
-                                })}
-                            </tbody>
-                        </table>
                     </Card>
                 </div>
             );
@@ -747,7 +762,7 @@
                 const today = new Date();
                 const selDate = new Date(date);
                 if (selDate.getMonth() < today.getMonth() && today.getDate() > 3) return alert("לא ניתן לדווח על חודש שעבר אחרי ה-3 לחודש");
-                await addDoc(getCollectionRef('shifts'), { employeeId: employee.id, date, startTime: start, gamesCount: Number(games), room, approved: false }); // Approved false = Pending initially
+                await addDoc(getCollectionRef('shifts'), { employeeId: employee.id, date, startTime: start, gamesCount: Number(games), room, status: 'pending' }); // FIX: Using 'pending' string
                 alert('המשמרת נשלחה לאישור המנהל'); setStart(''); setGames(1);
             };
             
@@ -776,7 +791,7 @@
                                             <td className="py-2">{formatDateIL(s.date)}</td>
                                             <td>{s.startTime}</td>
                                             <td>{s.room}</td>
-                                            <td>{s.approved ? <span className="text-green-400">אושר</span> : <span className="text-yellow-400">ממתין</span>}</td>
+                                            <td><StatusBadge status={s.status || (s.approved ? 'approved' : 'pending')} /></td>
                                             <td><button onClick={() => del(s.id)} className="text-red-400"><Trash2 size={14}/></button></td>
                                         </tr>
                                     ))}
