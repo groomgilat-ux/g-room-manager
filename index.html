@@ -452,16 +452,19 @@
                         <Card title="משמרות ממתינות לאישור">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-right text-sm">
-                                    <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך</th><th>שעות</th><th>חדר</th><th>פעולות</th></tr></thead>
+                                    <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך התחלה</th><th>תאריך סיום</th><th>טווח שעות</th><th>חדר</th><th>משחקים</th><th>פעולות</th></tr></thead>
                                     <tbody className="divide-y divide-gray-800">
                                         {pendingShifts.map(s => {
                                             const e = employees.find(emp => emp.id === s.employeeId);
+                                            const endTime = addTime(s.startTime, s.gamesCount * 90);
                                             return (
                                                 <tr key={s.id} className="hover:bg-gray-800/30">
                                                     <td className="py-2 font-bold">{e?.name}</td>
                                                     <td>{formatDateIL(s.date)}</td>
-                                                    <td>{s.startTime} ({s.gamesCount} מש')</td>
+                                                    <td>{formatDateIL(s.date)}</td> {/* Assuming shift ends same day */}
+                                                    <td>{s.startTime} - {endTime}</td>
                                                     <td>{s.room}</td>
+                                                    <td>{s.gamesCount}</td>
                                                     <td className="flex gap-2 py-2">
                                                         <Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, 'approved')}><Check size={14}/></Button>
                                                         <Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, 'rejected')}><XIcon size={14}/></Button>
@@ -591,7 +594,7 @@
                     <Card title="רשימת אילוצים">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>סיבה</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                                <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך התחלה</th><th>תאריך סיום</th><th>טווח שעות</th><th>סיבה</th><th>סטטוס</th><th>פעולות</th></tr></thead>
                                 <tbody className="text-dynamic opacity-90">
                                     {sortedConstraints.map(c => {
                                         const emp = employees.find(e => e.id === c.employeeId);
@@ -784,17 +787,20 @@
                     <Card title="היסטוריה">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>שעות</th><th>חדר</th><th>סטטוס</th><th>מחק</th></tr></thead>
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>שעות</th><th>חדר</th><th>משחקים</th><th>סטטוס</th><th>מחק</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
-                                    {myShifts.map(s => (
+                                    {myShifts.map(s => {
+                                        const endTime = addTime(s.startTime, s.gamesCount * 90);
+                                        return (
                                         <tr key={s.id}>
                                             <td className="py-2">{formatDateIL(s.date)}</td>
-                                            <td>{s.startTime}</td>
+                                            <td>{s.startTime} - {endTime}</td>
                                             <td>{s.room}</td>
+                                            <td>{s.gamesCount}</td>
                                             <td><StatusBadge status={s.status || (s.approved ? 'approved' : 'pending')} /></td>
                                             <td><button onClick={() => del(s.id)} className="text-red-400"><Trash2 size={14}/></button></td>
                                         </tr>
-                                    ))}
+                                    )})}
                                 </tbody>
                             </table>
                         </div>
@@ -860,11 +866,12 @@
                     <Card title="האילוצים שלי">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                                <thead className="text-gray-400 border-b border-gray-700"><tr><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
                                     {myCons.map(c => (
                                         <tr key={c.id}>
                                             <td className="py-2">{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td>
+                                            <td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td>
                                             <td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td>
                                             <td>{c.note}</td>
                                             <td><StatusBadge status={c.status || 'pending'} /></td>
