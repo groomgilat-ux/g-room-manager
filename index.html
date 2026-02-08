@@ -850,8 +850,8 @@
                         <form onSubmit={submit} className="space-y-4">
                             {mode==='single' ? (
                                 <>
-                                    <Input type="date" value={date} onChange={e=>setDate(e.target.value)} required/>
-                                    <div className="flex gap-4"><Input type="time" value={start} onChange={e=>setStart(e.target.value)} required/><Input type="time" value={end} onChange={e=>setEnd(e.target.value)} required/></div>
+                                    <Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required/>
+                                    <div className="flex gap-4"><Input label="שעת התחלה" type="time" step="900" value={start} onChange={e=>setStart(e.target.value)} required/><Input label="שעת סיום" type="time" step="900" value={end} onChange={e=>setEnd(e.target.value)} required/></div>
                                 </>
                             ) : (
                                 <><Input label="מ" type="date" value={sDate} onChange={e=>setSDate(e.target.value)} required/><Input label="עד" type="date" value={eDate} onChange={e=>setEDate(e.target.value)} required/></>
@@ -866,7 +866,7 @@
                     <Card title="האילוצים שלי">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="text-gray-400 border-b border-gray-700"><tr><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
                                     {myCons.map(c => (
                                         <tr key={c.id}>
