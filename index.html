@@ -807,7 +807,7 @@
             return (
                 <div className="space-y-6">
                     <div className="flex card-bg p-1 rounded-lg w-fit">
-                        {[{id:'report', l:'דיווח'}, {id:'constraints', l:'אילוצים'}, {id:'tasks', l:'משימות', c:myPendingTasks.length}, {id:'profile', l:'פרופיל'}].map(t => (
+                        {[{id:'report', l:'דיווח משמרת'}, {id:'constraints', l:'אילוצים'}, {id:'tasks', l:'משימות', c:myPendingTasks.length}, {id:'profile', l:'פרופיל'}].map(t => (
                             <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center gap-2 px-6 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>
                                 {t.l}
                                 {t.c > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{t.c}</span>}
@@ -1057,3 +1057,4 @@
     </script>
 </body>
 </html>
+
