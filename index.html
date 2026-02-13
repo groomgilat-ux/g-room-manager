@@ -68,7 +68,7 @@
             FileText, Mail, CheckCircle, XCircle, AlertTriangle, Lock, Menu, 
             X, User, LayoutDashboard, Send, CalendarRange, Download, UploadCloud, 
             File, ChevronLeft, ChevronRight, Activity, MapPin, Database, Loader, 
-            Trash2, Bell, Check, X as XIcon, Cake, Wifi, WifiOff, Edit2
+            Trash2, Bell, Check, X as XIcon, Cake, Wifi, WifiOff, Edit2, CheckSquare
         } from 'lucide-react';
 
         import { initializeApp } from 'firebase/app';
@@ -125,6 +125,12 @@
             if(!dateStr) return '';
             const d = new Date(dateStr);
             return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+        };
+        
+        const formatDateTimeIL = (dateStr) => {
+            if(!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute:'2-digit' });
         };
 
         const addTime = (timeStr, minutesToAdd) => {
@@ -202,7 +208,7 @@
         function GRoomApp() {
             const [user, setUser] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
-            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [] });
+            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [] });
             const [settings, setSettings] = useState(INITIAL_SETTINGS_FALLBACK);
             const [loading, setLoading] = useState(true);
             const [login, setLogin] = useState({ code: '', empId: '' });
@@ -222,6 +228,7 @@
                     onSnapshot(getCollectionRef('shifts'), s => setData(p => ({...p, shifts: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('constraints'), s => setData(p => ({...p, constraints: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('requests'), s => setData(p => ({...p, requests: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('tasks'), s => setData(p => ({...p, tasks: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('app_settings'), s => {
                         if (!s.empty) {
                             const d = s.docs.find(doc => doc.id === 'global') || s.docs[0];
@@ -291,7 +298,7 @@
                     <main className="max-w-7xl mx-auto px-4 py-8">
                         {currentUser.role === 'admin' ? 
                             <AdminDashboard data={data} settings={settings} /> : 
-                            <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} />
+                            <EmployeeDashboard employee={currentUser.data} data={data} settings={settings} />
                         }
                     </main>
                 </div>
@@ -308,7 +315,7 @@
             return (
                 <div className="space-y-6">
                     <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-2">
-                        {[{id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
+                        {[{id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'tasks', l:'משימות', i:CheckSquare}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
                             <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}><m.i size={18} className="icon-dynamic"/> {m.l} 
                             {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
                             {m.id === 'shifts' && pendingShifts.length > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingShifts.length}</span>}
@@ -320,6 +327,7 @@
                         {tab==='employees' && <AdminEmployees employees={data.employees}/>}
                         {tab==='shifts' && <AdminReports employees={data.employees} shifts={data.shifts} settings={settings}/>}
                         {tab==='constraints' && <AdminConstraints employees={data.employees} constraints={data.constraints} settings={settings}/>}
+                        {tab==='tasks' && <AdminTasks employees={data.employees} tasks={data.tasks}/>}
                         {tab==='settings' && <AdminSettings settings={settings}/>}
                         {tab==='requests' && <AdminRequests requests={pendingReq} employees={data.employees}/>}
                     </div>
@@ -402,6 +410,7 @@
             const [selEmp, setSelEmp] = useState('');
             const [saving, setSaving] = useState(false);
             
+            // FIX: Using status string instead of boolean approved
             const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
             const pendingShifts = shifts.filter(s => s.status === 'pending');
 
@@ -445,6 +454,7 @@
 
             return (
                 <div className="space-y-6">
+                    {/* Pending Shifts Section - New Request */}
                     {pendingShifts.length > 0 && (
                         <Card title="משמרות ממתינות לאישור">
                             <div className="overflow-x-auto">
@@ -571,11 +581,15 @@
 
             const dayTitle = (d) => d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'});
 
+            // FIX: Sorting Logic for constraints
             const sortedConstraints = useMemo(() => {
                 return [...constraints].sort((a, b) => {
+                    // Sort by Employee Name
                     const empA = employees.find(e => e.id === a.employeeId)?.name || '';
                     const empB = employees.find(e => e.id === b.employeeId)?.name || '';
                     if (empA !== empB) return empA.localeCompare(empB);
+                    
+                    // Then by Date
                     const dateA = a.type === 'range' ? a.startDate : a.date;
                     const dateB = b.type === 'range' ? b.startDate : b.date;
                     return dateA.localeCompare(dateB);
@@ -642,6 +656,70 @@
                             </div>
                         </div>
                     </Card>
+                </div>
+            );
+        };
+
+        const AdminTasks = ({ employees, tasks }) => {
+            const [desc, setDesc] = useState('');
+            const [deadline, setDeadline] = useState('');
+            const [empId, setEmpId] = useState('');
+
+            const addTask = async (e) => {
+                e.preventDefault();
+                await addDoc(getCollectionRef('tasks'), { description: desc, deadline, assigneeId: empId, status: 'pending', createdAt: new Date().toISOString() });
+                alert('משימה נוספה'); setDesc(''); setDeadline(''); setEmpId('');
+            };
+
+            const delTask = async (id) => { if(confirm("למחוק?")) await deleteDoc(getDocRef('tasks', id)); };
+
+            const pending = tasks.filter(t => t.status === 'pending');
+            const completed = tasks.filter(t => t.status === 'completed');
+
+            return (
+                <div className="space-y-6">
+                    <Card title="הוספת משימה חדשה">
+                        <form onSubmit={addTask} className="space-y-4">
+                            <Input label="תיאור המשימה" value={desc} onChange={e=>setDesc(e.target.value)} required />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="דדליין" type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} required />
+                                <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2" required value={empId} onChange={e=>setEmpId(e.target.value)}>
+                                    <option value="">בחר עובד אחראי</option>
+                                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                </select>
+                            </div>
+                            <Button type="submit">הוסף משימה</Button>
+                        </form>
+                    </Card>
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <Card title="ממתין לביצוע">
+                            {pending.length === 0 && <p className="text-gray-500">אין משימות פתוחות</p>}
+                            {pending.map(t => {
+                                const emp = employees.find(e => e.id === t.assigneeId);
+                                return (
+                                    <div key={t.id} className="border-b border-gray-800 py-2 flex justify-between items-center">
+                                        <div>
+                                            <div className="font-bold">{t.description}</div>
+                                            <div className="text-sm opacity-70">אחראי: {emp?.name} | יעד: {formatDateIL(t.deadline)}</div>
+                                        </div>
+                                        <button onClick={()=>delTask(t.id)} className="text-red-400"><Trash2 size={16}/></button>
+                                    </div>
+                                )
+                            })}
+                        </Card>
+                        <Card title="היסטוריית ביצוע">
+                            {completed.length === 0 && <p className="text-gray-500">אין משימות שהושלמו</p>}
+                            {completed.map(t => {
+                                const emp = employees.find(e => e.id === t.assigneeId);
+                                return (
+                                    <div key={t.id} className="border-b border-gray-800 py-2">
+                                        <div className="font-bold text-green-400 line-through">{t.description}</div>
+                                        <div className="text-sm opacity-70">בוצע ע"י: {emp?.name} ב-{formatDateIL(t.completedAt)}</div>
+                                    </div>
+                                )
+                            })}
+                        </Card>
+                    </div>
                 </div>
             );
         };
@@ -731,19 +809,51 @@
         };
 
         // --- Employee Views ---
-        const EmployeeDashboard = ({ employee, shifts, constraints, settings }) => {
+        const EmployeeDashboard = ({ employee, shifts, constraints, settings, tasks }) => {
             const [tab, setTab] = useState('report');
+            const myPendingTasks = tasks ? tasks.filter(t => t.assigneeId === employee.id && t.status === 'pending') : [];
+
             return (
                 <div className="space-y-6">
                     <div className="flex card-bg p-1 rounded-lg w-fit">
-                        {['report', 'constraints', 'profile'].map(t => (
-                            <button key={t} onClick={()=>setTab(t)} className={`px-6 py-2 rounded text-dynamic ${tab===t?'bg-indigo-600 text-white':''}`}>{t==='report'?'דיווח':t==='constraints'?'אילוצים':'פרופיל'}</button>
+                        {[{id:'report', l:'דיווח'}, {id:'constraints', l:'אילוצים'}, {id:'tasks', l:'משימות', c:myPendingTasks.length}, {id:'profile', l:'פרופיל'}].map(t => (
+                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center gap-2 px-6 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>
+                                {t.l}
+                                {t.c > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{t.c}</span>}
+                            </button>
                         ))}
                     </div>
                     {tab==='report' && <EmployeeReport employee={employee} shifts={shifts}/>}
                     {tab==='constraints' && <EmployeeConstraints employee={employee} constraints={constraints}/>}
+                    {tab==='tasks' && <EmployeeTasks employee={employee} tasks={tasks}/>}
                     {tab==='profile' && <EmployeeProfile employee={employee} shifts={shifts}/>}
                 </div>
+            );
+        };
+
+        const EmployeeTasks = ({ employee, tasks }) => {
+            const myTasks = tasks.filter(t => t.assigneeId === employee.id && t.status === 'pending');
+            
+            const handleComplete = async (id) => {
+                await updateDoc(getDocRef('tasks', id), { status: 'completed', completedAt: new Date().toISOString() });
+                alert('כל הכבוד! המשימה הושלמה');
+            };
+
+            return (
+                <Card title="המשימות שלי">
+                    {myTasks.length === 0 && <div className="text-center py-8 opacity-60">אין משימות פתוחות 🎉</div>}
+                    <div className="space-y-4">
+                        {myTasks.map(t => (
+                            <div key={t.id} className="border border-gray-700 rounded-lg p-4 flex justify-between items-center bg-gray-800/30">
+                                <div>
+                                    <h3 className="font-bold text-lg mb-1">{t.description}</h3>
+                                    <div className="text-sm opacity-70 text-red-300">לביצוע עד: {formatDateIL(t.deadline)}</div>
+                                </div>
+                                <Button onClick={() => handleComplete(t.id)} variant="success">ביצעתי</Button>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
             );
         };
 
