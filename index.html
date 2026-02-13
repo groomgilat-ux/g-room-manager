@@ -30,31 +30,25 @@
             --app-bg: #030712;
             --app-text: #ffffff;
             --app-card-bg: rgba(255, 255, 255, 0.05);
-            --app-accent: #8b5cf6;
+            --app-border: rgba(255, 255, 255, 0.1);
         }
         body { background-color: var(--app-bg); color: var(--app-text); font-family: sans-serif; transition: background-color 0.3s, color 0.3s; }
         
-        /* Overrides for dynamic theming */
-        .card-bg { background-color: var(--app-card-bg); border: 1px solid rgba(255,255,255,0.1); }
+        /* Dynamic Classes */
+        .card-bg { background-color: var(--app-card-bg); border: 1px solid var(--app-border); }
         .text-dynamic { color: var(--app-text) !important; }
-        .icon-dynamic { stroke: var(--app-text); }
+        .border-dynamic { border-color: var(--app-border) !important; }
         
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
         .fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
-        /* Force Dark Mode on Inputs (Calendar/Clock icons white) */
-        input[type="date"], input[type="time"], select {
-            color-scheme: dark;
-        }
-        ::-webkit-calendar-picker-indicator {
-            filter: invert(1);
-            cursor: pointer;
-        }
+        /* Input overrides */
+        input[type="date"], input[type="time"], select { color-scheme: dark; }
+        ::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
     </style>
 </head>
 <body>
@@ -125,12 +119,6 @@
             if(!dateStr) return '';
             const d = new Date(dateStr);
             return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
-        };
-        
-        const formatDateTimeIL = (dateStr) => {
-            if(!dateStr) return '';
-            const d = new Date(dateStr);
-            return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute:'2-digit' });
         };
 
         const addTime = (timeStr, minutesToAdd) => {
@@ -242,10 +230,13 @@
 
             useEffect(() => {
                 const r = document.documentElement.style;
+                // Sets colors from DB settings or falls back to defaults
                 r.setProperty('--app-bg', settings.primaryColor || '#030712');
                 r.setProperty('--app-text', settings.secondaryColor || '#ffffff');
-                // Calculate card bg
-                r.setProperty('--app-card-bg', settings.primaryColor === '#ffffff' ? '#f3f4f6' : 'rgba(255, 255, 255, 0.05)');
+                // Smart card bg based on brightness of bg
+                const isLight = settings.primaryColor === '#ffffff' || settings.primaryColor === '#f3f4f6';
+                r.setProperty('--app-card-bg', isLight ? '#e5e7eb' : 'rgba(255, 255, 255, 0.05)');
+                r.setProperty('--app-border', isLight ? '#d1d5db' : 'rgba(255, 255, 255, 0.1)');
             }, [settings]);
 
             const doLogin = () => {
@@ -278,13 +269,14 @@
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                             {!dbConn && <p className="text-red-400 text-xs">שגיאת חיבור לענן. בדוק הרשאות.</p>}
                         </div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 3.0</div>
                     </div>
                 </div>
             );
 
             return (
-                <div className="min-h-screen font-sans">
-                    <header className="card-bg border-b border-gray-800 sticky top-0 z-50 h-16 flex items-center justify-between px-6">
+                <div className="min-h-screen font-sans flex flex-col">
+                    <header className="card-bg border-b border-dynamic sticky top-0 z-50 h-16 flex items-center justify-between px-6">
                         <div className="flex items-center gap-3">
                             {settings.logo && <img src={settings.logo} className="h-8 w-8 rounded object-cover"/>}
                             <span className="font-bold text-xl text-dynamic">{settings.businessName}</span>
@@ -295,12 +287,13 @@
                         </div>
                         <Button variant="ghost" onClick={() => {setCurrentUser(null); setLogin({code:'', empId:''});}} className="text-red-400"><LogOut size={18} /> יציאה</Button>
                     </header>
-                    <main className="max-w-7xl mx-auto px-4 py-8">
+                    <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
                         {currentUser.role === 'admin' ? 
                             <AdminDashboard data={data} settings={settings} /> : 
-                            <EmployeeDashboard employee={currentUser.data} data={data} settings={settings} />
+                            <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks}/>
                         }
                     </main>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v3.0</footer>
                 </div>
             );
         }
@@ -309,12 +302,14 @@
         const AdminDashboard = ({ data, settings }) => {
             const [tab, setTab] = useState('employees');
             const pendingReq = data.requests.filter(r => r.status === 'pending');
+            // Logic for badges: Only count items that are 'pending' or (for shifts) have not been acted upon
             const pendingCons = data.constraints.filter(c => c.status === 'pending');
-            const pendingShifts = data.shifts.filter(s => s.status === 'pending');
+            // Supports legacy data where status might be missing but approved is false
+            const pendingShifts = data.shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
             
             return (
                 <div className="space-y-6">
-                    <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-2">
+                    <div className="flex flex-wrap gap-2 border-b border-dynamic pb-2">
                         {[{id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'tasks', l:'משימות', i:CheckSquare}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
                             <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}><m.i size={18} className="icon-dynamic"/> {m.l} 
                             {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
@@ -410,9 +405,9 @@
             const [selEmp, setSelEmp] = useState('');
             const [saving, setSaving] = useState(false);
             
-            // FIX: Using status string instead of boolean approved
+            // Logic: Show confirmed shifts for payroll, pending shifts for approval
             const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
-            const pendingShifts = shifts.filter(s => s.status === 'pending');
+            const pendingShifts = shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
 
             const report = employees.map(emp => {
                 const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id);
@@ -434,7 +429,7 @@
             };
 
             const handleShiftStatus = async (id, newStatus) => {
-                await updateDoc(getDocRef('shifts', id), { status: newStatus });
+                await updateDoc(getDocRef('shifts', id), { status: newStatus, approved: newStatus === 'approved' });
             };
 
             const doExport = () => {
@@ -454,7 +449,7 @@
 
             return (
                 <div className="space-y-6">
-                    {/* Pending Shifts Section - New Request */}
+                    {/* Pending Shifts Section */}
                     {pendingShifts.length > 0 && (
                         <Card title="משמרות ממתינות לאישור">
                             <div className="overflow-x-auto">
@@ -581,15 +576,11 @@
 
             const dayTitle = (d) => d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'});
 
-            // FIX: Sorting Logic for constraints
             const sortedConstraints = useMemo(() => {
                 return [...constraints].sort((a, b) => {
-                    // Sort by Employee Name
                     const empA = employees.find(e => e.id === a.employeeId)?.name || '';
                     const empB = employees.find(e => e.id === b.employeeId)?.name || '';
                     if (empA !== empB) return empA.localeCompare(empB);
-                    
-                    // Then by Date
                     const dateA = a.type === 'range' ? a.startDate : a.date;
                     const dateB = b.type === 'range' ? b.startDate : b.date;
                     return dateA.localeCompare(dateB);
