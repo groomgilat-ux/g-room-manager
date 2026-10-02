@@ -55,7 +55,7 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useMemo } from 'react';
+        import React, { useState, useEffect, useMemo, useCallback } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
             Users, Calendar, DollarSign, Settings, LogOut, Plus, Save, Clock, 
@@ -98,8 +98,8 @@
             adminCode: 'admin123',
             logo: null,
             primaryColor: '#030712', 
-            secondaryColor: '#ffffff',
-            roomsList: 'סודו של הודיני', // ADDED: dynamic rooms list
+            secondaryColor: '#ffffff', 
+            roomsList: 'סודו של הודיני', 
             emailTemplate: {
                 subject: 'G-Room: תלוש שכר לחודש {month}/{year}',
                 body: 'היי {name},\n\nמצורף תלוש השכר שלך עבור חודש {month}/{year}.\n\nבברכה,\nהנהלת G-Room'
@@ -118,6 +118,21 @@
             },
             discounts: {
                 kids: 15, special: 10
+            }
+        };
+
+        // --- Tor4You Integration via Cloud Function ---
+        const YOUR_CLOUD_FUNCTION_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouAppts";
+
+        const fetchTor4YouAppointments = async (dateString) => {
+             try {
+                const response = await fetch(`${YOUR_CLOUD_FUNCTION_URL}?date=${dateString}`);
+                if (!response.ok) throw new Error("Network response was not ok");
+                const data = await response.json();
+                return data.customers || [];
+            } catch (error) {
+                console.error("Failed to fetch appointments via Firebase Function:", error);
+                return []; // Fallback to manual entry gracefully
             }
         };
 
@@ -183,7 +198,7 @@
                 <td style="border:1px solid #000;padding:8px;">מזומן</td>
                 <td style="border:1px solid #000;padding:8px;">אשראי</td>
                 <td style="border:1px solid #000;padding:8px;">ביט</td>
-                <td style="border:1px solid #000;padding:8px;">העברה/שובר מגה לאן + קוד עסקה</td>
+                <td style="border:1px solid #000;padding:8px;">שובר מגה לאן + קוד עסקה</td>
             </tr>`;
             
             groups.forEach((g, idx) => {
@@ -205,9 +220,15 @@
                 const discountType = discountTypeStr.join(', ') || '-';
                 const discountPercent = hasDiscount && fullPrice > 0 ? Math.round((g.discountAmount / fullPrice) * 100) + '%' : '-';
                 
-                let otherPayments = [];
-                if (g.payments.transfer > 0) otherPayments.push(`העברה: ₪${g.payments.transfer}`);
-                if (g.hasVoucher) otherPayments.push(`שובר (${g.voucherCode}) על ${g.voucherPlayers} שחקנים`);
+                let voucherCell = '-';
+                if (g.hasVoucher) {
+                    voucherCell = `שובר (${g.voucherCode || 'ללא קוד'}) על ${g.voucherPlayers} שחקנים`;
+                    if (g.payments.transfer > 0) {
+                        voucherCell += ` | העברה (סופ"ש): ₪${g.payments.transfer}`;
+                    }
+                } else if (g.payments.transfer > 0) {
+                     voucherCell = `העברה: ₪${g.payments.transfer}`;
+                }
 
                 tableRows += `<tr>
                     <td style="border:1px solid #ccc;padding:5px;">${idx + 1}</td>
@@ -226,7 +247,7 @@
                     <td style="border:1px solid #ccc;padding:5px;">₪${g.payments.cash}</td>
                     <td style="border:1px solid #ccc;padding:5px;">₪${g.payments.credit}</td>
                     <td style="border:1px solid #ccc;padding:5px;">₪${g.payments.bit}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${otherPayments.join(' | ') || '-'}</td>
+                    <td style="border:1px solid #ccc;padding:5px;">${voucherCell}</td>
                 </tr>`;
             });
             
@@ -238,10 +259,17 @@
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
+        const replacePlaceholders = (template, data) => {
+            if (!template) return '';
+            let result = template;
+            Object.keys(data).forEach(key => result = result.replace(new RegExp(`{${key}}`, 'g'), data[key]));
+            return result;
+        };
+
         const timeoutPromise = (promise, ms = 5000) => Promise.race([promise, new Promise((_, r) => setTimeout(() => r(new Error("Timeout")), ms))]);
 
-        // --- UI ---
-        const Button = ({ children, onClick, variant = 'primary', className = '', disabled, ...props }) => {
+        // --- UI Components ---
+        const Button = ({ children, onClick, variant = 'primary', className = '', disabled, type="button", ...props }) => {
             const v = {
                 primary: "bg-indigo-600 hover:bg-indigo-700 text-white",
                 secondary: "bg-gray-700 hover:bg-gray-600 text-gray-100",
@@ -249,7 +277,7 @@
                 success: "bg-green-600 hover:bg-green-700 text-white",
                 outline: "border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20"
             };
-            return <button onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>;
+            return <button type={type} onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>;
         };
 
         const Card = ({ title, children, className = '' }) => (
@@ -272,7 +300,7 @@
             return <span className="text-yellow-400 flex items-center gap-1 text-xs"><Clock size={14}/> ממתין</span>;
         };
 
-        // --- Main ---
+        // --- Main App Component ---
         function GRoomApp() {
             const [user, setUser] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
@@ -348,7 +376,7 @@
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                             {!dbConn && <p className="text-red-400 text-xs">שגיאת חיבור לענן. בדוק הרשאות.</p>}
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 6.0</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 4.2 (Firebase Cloud Function Support)</div>
                     </div>
                 </div>
             );
@@ -372,7 +400,7 @@
                             <EmployeeDashboard employee={currentUser.data} data={data} settings={settings} />
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v6.0</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v4.2</footer>
                 </div>
             );
         }
@@ -1008,7 +1036,46 @@
                 isWeekend: false, payments: { cash: 0, credit: 0, bit: 0, transfer: 0 }
             });
 
-            // Lock discounts if voucher is checked
+            const [tor4youCustomers, setTor4youCustomers] = useState([]);
+            const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+            const [isManualCustomer, setIsManualCustomer] = useState(true);
+
+            useEffect(() => {
+                const loadCustomers = async () => {
+                    setIsLoadingCustomers(true);
+                    setTor4youCustomers([]); 
+                    
+                    const customers = await fetchTor4YouAppointments(g.date);
+                    
+                    if (customers.length > 0) {
+                        setTor4youCustomers(customers);
+                        if(!g.customerName || !customers.includes(g.customerName)) {
+                             setG(prev => ({...prev, customerName: customers[0]}));
+                        }
+                        setIsManualCustomer(false);
+                    } else {
+                        setIsManualCustomer(true);
+                        if (tor4youCustomers.includes(g.customerName)) {
+                            setG(prev => ({...prev, customerName: ''}));
+                        }
+                    }
+                    setIsLoadingCustomers(false);
+                };
+
+                loadCustomers();
+            }, [g.date]);
+
+            const handleCustomerChange = (e) => {
+                const val = e.target.value;
+                if (val === 'MANUAL') {
+                    setIsManualCustomer(true);
+                    setG({...g, customerName: ''});
+                } else {
+                    setIsManualCustomer(false);
+                    setG({...g, customerName: val});
+                }
+            };
+
             useEffect(() => {
                 if (g.hasVoucher) {
                     setG(prev => ({...prev, kidsCount: 0, specialCount: 0}));
@@ -1111,7 +1178,43 @@
                                 <select className="w-full bg-gray-800 p-2 rounded text-white" value={g.room} onChange={e=>setG({...g, room:e.target.value})}>
                                     {roomsArray.map(s=><option key={s} value={s}>{s}</option>)}
                                 </select></div>
-                                <Input label="שם הלקוח" value={g.customerName} onChange={e=>setG({...g, customerName:e.target.value})} required />
+                                
+                                <div>
+                                    <label className="block text-sm opacity-70 mb-1 flex justify-between items-center">
+                                        <span>שם הלקוח</span>
+                                        {isLoadingCustomers && <Loader size={12} className="animate-spin text-indigo-400" />}
+                                    </label>
+                                    
+                                    {!isManualCustomer && tor4youCustomers.length > 0 ? (
+                                        <select 
+                                            className="w-full bg-gray-800 border border-indigo-500/50 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={g.customerName}
+                                            onChange={handleCustomerChange}
+                                            required
+                                        >
+                                            {tor4youCustomers.map((name, i) => (
+                                                <option key={i} value={name}>{name}</option>
+                                            ))}
+                                            <option value="MANUAL" className="text-indigo-400 font-bold">+ לקוח מזדמן / הקלדה ידנית</option>
+                                        </select>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                                value={g.customerName} 
+                                                onChange={e=>setG({...g, customerName:e.target.value})} 
+                                                required 
+                                                placeholder="הקלד שם לקוח..."
+                                            />
+                                            {tor4youCustomers.length > 0 && (
+                                                <Button type="button" variant="outline" size="sm" onClick={() => setIsManualCustomer(false)} title="חזור לרשימת יומן" className="px-2">
+                                                    <CalendarRange size={16} />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-3 gap-4 border-t border-gray-700 pt-4">
@@ -1453,3 +1556,6 @@
     </script>
 </body>
 </html>
+```
+
+שתהיה מוכן, תעתיק את הקוד, ותודיע לי אם הכל עובד טוב ידנית כרגע!
