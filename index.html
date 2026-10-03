@@ -62,7 +62,7 @@
             FileText, Mail, CheckCircle, XCircle, AlertTriangle, Lock, Menu, 
             X, User, LayoutDashboard, Send, CalendarRange, Download, UploadCloud, 
             File, ChevronLeft, ChevronRight, Activity, MapPin, Database, Loader, 
-            Trash2, Bell, Check, X as XIcon, Cake, Wifi, WifiOff, Edit2, CheckSquare
+            Trash2, Bell, Check, X as XIcon, Cake, Wifi, WifiOff, Edit2, CheckSquare, Coins
         } from 'lucide-react';
 
         import { initializeApp } from 'firebase/app';
@@ -88,6 +88,9 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app, 'groom');
+        
+        // YOUR FIREBASE CLOUD FUNCTION URL (DEBUG MODE ENABLED)
+        const TOR4YOU_FUNCTION_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouAppts?debug=true";
 
         const getCollectionRef = (name) => collection(db, name);
         const getDocRef = (name, id) => doc(db, name, id);
@@ -98,8 +101,18 @@
             adminCode: 'admin123',
             logo: null,
             primaryColor: '#030712', 
-            secondaryColor: '#ffffff', 
-            roomsList: 'סודו של הודיני', 
+            secondaryColor: '#ffffff',
+            roomsList: 'סודו של הודיני',
+            pricing: {
+                basePrice2: 140,
+                basePrice3: 125,
+                basePrice4: 110,
+                basePrice5: 100,
+                basePrice6to8: 90,
+                basePrice9to10: 80,
+                discountKids: 15,
+                discountEligible: 10
+            },
             emailTemplate: {
                 subject: 'G-Room: תלוש שכר לחודש {month}/{year}',
                 body: 'היי {name},\n\nמצורף תלוש השכר שלך עבור חודש {month}/{year}.\n\nבברכה,\nהנהלת G-Room'
@@ -112,27 +125,6 @@
                 Thursday: { start: '10:00', end: '01:00' },
                 Friday: { start: '09:00', end: '15:00' },
                 Saturday: { start: '18:00', end: '01:00' },
-            },
-            pricing: {
-                p2: 140, p3: 125, p4: 110, p5: 100, p6to8: 90, p9to10: 80
-            },
-            discounts: {
-                kids: 15, special: 10
-            }
-        };
-
-        // --- Tor4You Integration via Cloud Function ---
-        const YOUR_CLOUD_FUNCTION_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouAppts";
-
-        const fetchTor4YouAppointments = async (dateString) => {
-             try {
-                const response = await fetch(`${YOUR_CLOUD_FUNCTION_URL}?date=${dateString}`);
-                if (!response.ok) throw new Error("Network response was not ok");
-                const data = await response.json();
-                return data.customers || [];
-            } catch (error) {
-                console.error("Failed to fetch appointments via Firebase Function:", error);
-                return []; // Fallback to manual entry gracefully
             }
         };
 
@@ -141,12 +133,6 @@
             if(!dateStr) return '';
             const d = new Date(dateStr);
             return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
-        };
-        
-        const formatDateTimeIL = (dateStr) => {
-            if(!dateStr) return '';
-            const d = new Date(dateStr);
-            return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute:'2-digit' });
         };
 
         const addTime = (timeStr, minutesToAdd) => {
@@ -157,17 +143,36 @@
             return date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
         };
 
-        const exportToXLS = (salaryReport, filename) => {
+        const generateTimeOptions = () => {
+            const options = [];
+            for (let i = 0; i < 24; i++) {
+                for (let j = 0; j < 60; j += 15) {
+                    options.push(`${i.toString().padStart(2, '0')}:${j.toString().padStart(2, '0')}`);
+                }
+            }
+            return options;
+        };
+
+        const getBasePrice = (players, pricing) => {
+            if (players <= 2) return pricing.basePrice2;
+            if (players === 3) return pricing.basePrice3;
+            if (players === 4) return pricing.basePrice4;
+            if (players === 5) return pricing.basePrice5;
+            if (players >= 6 && players <= 8) return pricing.basePrice6to8;
+            if (players >= 9) return pricing.basePrice9to10;
+            return 0;
+        };
+
+        const exportToXLSSalary = (salaryReport, filename) => {
             let tableRows = '';
             salaryReport.forEach(emp => {
                 if (emp.empShifts.length > 0) {
                     tableRows += `<tr><td colspan="7" style="background-color:#e0e7ff;font-weight:bold;text-align:center;">${emp.name}</td></tr>
-                    <tr style="background-color:#f3f4f6;font-weight:bold;"><td>תאריך</td><td>התחלה</td><td>סיום (משוער)</td><td>חדר</td><td>משחקים</td><td>תעריף משמרת</td><td>סה"כ</td></tr>`;
+                    <tr style="background-color:#f3f4f6;font-weight:bold;"><td>תאריך</td><td>התחלה</td><td>סיום (משוער)</td><td>חדר</td><td>משחקים</td><td>תעריף משומר</td><td>סה"כ</td></tr>`;
                     emp.empShifts.forEach(s => {
                         const endTime = addTime(s.startTime, s.gamesCount * 90); 
-                        const activeWage = s.wagePerGameAtTime || emp.wagePerGame;
-                        const shiftWage = s.gamesCount * activeWage;
-                        tableRows += `<tr><td>${formatDateIL(s.date)}</td><td>${s.startTime}</td><td>${endTime}</td><td>${s.room}</td><td>${s.gamesCount}</td><td>₪${activeWage}</td><td>₪${shiftWage}</td></tr>`;
+                        const shiftWage = s.gamesCount * s.wageAtTime;
+                        tableRows += `<tr><td>${formatDateIL(s.date)}</td><td>${s.startTime}</td><td>${endTime}</td><td>${s.room}</td><td>${s.gamesCount}</td><td>₪${s.wageAtTime}</td><td>₪${shiftWage}</td></tr>`;
                     });
                     tableRows += `<tr><td colspan="6" style="font-weight:bold;">סה"כ לתשלום:</td><td style="font-weight:bold;background-color:#dcfce7;">₪${emp.totalWage}</td></tr><tr><td colspan="7"></td></tr>`;
                 }
@@ -180,82 +185,56 @@
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
-        const exportGroupsToXLS = (groups, employees, filename) => {
-            let tableRows = `<tr style="background-color:#a5f3fc;font-weight:bold;border:2px solid #000;">
-                <td style="border:1px solid #000;padding:8px;">#</td>
-                <td style="border:1px solid #000;padding:8px;">תאריך</td>
-                <td style="border:1px solid #000;padding:8px;">מפעיל/ה</td>
-                <td style="border:1px solid #000;padding:8px;">שעה</td>
-                <td style="border:1px solid #000;padding:8px;">שם החדר</td>
-                <td style="border:1px solid #000;padding:8px;">שם הלקוח</td>
-                <td style="border:1px solid #000;padding:8px;">כמות השחקנים</td>
-                <td style="border:1px solid #000;padding:8px;">סוג השחקנים<br/><span style="font-size:10px;font-weight:normal;">(משפחה,בני זוג,חברים,צוות עבודה)</span></td>
-                <td style="border:1px solid #000;padding:8px;">כיצד הגיעו אלינו?<br/><span style="font-size:10px;font-weight:normal;">(גוגל,פייסבוק, שלט, מפה לאוזן)</span></td>
-                <td style="border:1px solid #000;padding:8px;">סכום לתשלום (לפני הנחה)</td>
-                <td style="border:1px solid #000;padding:8px;">אחוז הנחה</td>
-                <td style="border:1px solid #000;padding:8px;">סוג ההנחה</td>
-                <td style="border:1px solid #000;padding:8px;">סך תשלום<br/>(אחרי הנחה)</td>
-                <td style="border:1px solid #000;padding:8px;">מזומן</td>
-                <td style="border:1px solid #000;padding:8px;">אשראי</td>
-                <td style="border:1px solid #000;padding:8px;">ביט</td>
-                <td style="border:1px solid #000;padding:8px;">שובר מגה לאן + קוד עסקה</td>
+        const exportToXLSGroups = (groups, employees, filename) => {
+            let tableRows = `<tr style="background-color:#bae6fd;font-weight:bold;">
+                <td>#</td><td>תאריך</td><td>שעה</td><td>שם החדר</td><td>שם הלקוח</td><td>כמות השחקנים</td>
+                <td>סוג השחקנים<br>(משפחה, בני זוג, חברים, צוות עבודה)</td><td>כיצד הגיעו אלינו?<br>(גוגל, פייסבוק, שלט, מפה לאוזן)</td>
+                <td>סכום לתשלום<br>(לפני הנחה)</td><td>סוג ההנחה</td><td>אחוז הנחה</td><td>סך תשלום<br>(אחרי הנחה)</td>
+                <td>מזומן</td><td>אשראי</td><td>ביט</td><td>העברה בנקאית</td><td>שובר מגה לאן + קוד עסקה</td><td>מפעיל/ה</td>
             </tr>`;
             
-            groups.forEach((g, idx) => {
-                let empName = '-';
-                if (g.employeeId === 'admin') empName = 'מנהל';
-                else {
-                    const emp = employees.find(e => e.id === g.employeeId);
-                    if (emp) empName = emp.name;
-                }
-
-                const fullPrice = g.basePrice * g.totalPlayers;
-                const hasDiscount = g.discountAmount > 0;
-                let discountTypeStr = [];
-                if(g.kidsCount > 0) discountTypeStr.push(`${g.kidsCount} ילדים`);
-                if(g.specialCount > 0) discountTypeStr.push(`${g.specialCount} זכאים`);
-                if(g.hasVoucher) discountTypeStr.push(`שובר`);
-                if(g.isWeekend) discountTypeStr.push(`תוספת סופ"ש`);
-
-                const discountType = discountTypeStr.join(', ') || '-';
-                const discountPercent = hasDiscount && fullPrice > 0 ? Math.round((g.discountAmount / fullPrice) * 100) + '%' : '-';
+            groups.forEach((g, index) => {
+                const empName = g.employeeId === 'admin' ? 'מנהל מערכת' : (employees.find(e => e.id === g.employeeId)?.name || 'לא ידוע');
+                let discountType = '';
+                if(g.hasMegaLaan) discountType = 'מגה לאן';
+                else if (g.kids > 0 && g.eligible > 0) discountType = 'ילדים + זכאים';
+                else if (g.kids > 0) discountType = 'ילדים';
+                else if (g.eligible > 0) discountType = 'זכאים';
                 
-                let voucherCell = '-';
-                if (g.hasVoucher) {
-                    voucherCell = `שובר (${g.voucherCode || 'ללא קוד'}) על ${g.voucherPlayers} שחקנים`;
-                    if (g.payments.transfer > 0) {
-                        voucherCell += ` | העברה (סופ"ש): ₪${g.payments.transfer}`;
-                    }
-                } else if (g.payments.transfer > 0) {
-                     voucherCell = `העברה: ₪${g.payments.transfer}`;
+                let discountPercent = '';
+                if(g.hasMegaLaan) discountPercent = '22%';
+                else if (g.totalDiscountAmount > 0) {
+                    discountPercent = Math.round((g.totalDiscountAmount / g.totalOriginalPrice) * 100) + '%';
                 }
+
+                const megaLaanInfo = g.hasMegaLaan ? `שובר על ${g.megaLaanPlayers} שחקנים (${g.megaLaanCode})` : '';
 
                 tableRows += `<tr>
-                    <td style="border:1px solid #ccc;padding:5px;">${idx + 1}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${formatDateIL(g.date)}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${empName}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${g.time}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${g.room}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${g.customerName}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${g.totalPlayers}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${g.groupType}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${g.referral}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">₪${fullPrice}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${discountPercent}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${discountType}</td>
-                    <td style="border:1px solid #ccc;padding:5px;font-weight:bold;">₪${g.finalPrice}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">₪${g.payments.cash}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">₪${g.payments.credit}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">₪${g.payments.bit}</td>
-                    <td style="border:1px solid #ccc;padding:5px;">${voucherCell}</td>
+                    <td>${index + 1}</td>
+                    <td>${formatDateIL(g.date)}</td>
+                    <td>${g.time}</td>
+                    <td>${g.room}</td>
+                    <td>${g.customerName}</td>
+                    <td>${g.totalPlayers}</td>
+                    <td>${g.groupType}</td>
+                    <td>${g.source}</td>
+                    <td>₪${g.totalOriginalPrice}</td>
+                    <td>${discountType}</td>
+                    <td>${discountPercent}</td>
+                    <td>₪${g.finalPriceToPay}</td>
+                    <td>₪${g.payments.cash}</td>
+                    <td>₪${g.payments.credit}</td>
+                    <td>₪${g.payments.bit}</td>
+                    <td>₪${g.payments.transfer}</td>
+                    <td>${megaLaanInfo}</td>
+                    <td>${empName}</td>
                 </tr>`;
             });
-            
-            let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse;width:100%;font-family:Arial;text-align:center;}th,td{border:1px solid #ccc;}</style></head><body dir="rtl"><table>${tableRows}</table></body></html>`;
+            let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse;width:100%;font-family:Arial;}th,td{border:1px solid #ccc;padding:5px;text-align:right;}</style></head><body dir="rtl"><table>${tableRows}</table></body></html>`;
             const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = filename || `Groups_Report.xls`;
+            link.download = filename || `Groups_Income.xls`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
@@ -269,7 +248,7 @@
         const timeoutPromise = (promise, ms = 5000) => Promise.race([promise, new Promise((_, r) => setTimeout(() => r(new Error("Timeout")), ms))]);
 
         // --- UI Components ---
-        const Button = ({ children, onClick, variant = 'primary', className = '', disabled, type="button", ...props }) => {
+        const Button = ({ children, onClick, variant = 'primary', className = '', disabled, ...props }) => {
             const v = {
                 primary: "bg-indigo-600 hover:bg-indigo-700 text-white",
                 secondary: "bg-gray-700 hover:bg-gray-600 text-gray-100",
@@ -277,7 +256,7 @@
                 success: "bg-green-600 hover:bg-green-700 text-white",
                 outline: "border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20"
             };
-            return <button type={type} onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>;
+            return <button onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>;
         };
 
         const Card = ({ title, children, className = '' }) => (
@@ -300,7 +279,7 @@
             return <span className="text-yellow-400 flex items-center gap-1 text-xs"><Clock size={14}/> ממתין</span>;
         };
 
-        // --- Main App Component ---
+        // --- Main App ---
         function GRoomApp() {
             const [user, setUser] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
@@ -325,7 +304,7 @@
                     onSnapshot(getCollectionRef('constraints'), s => setData(p => ({...p, constraints: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('requests'), s => setData(p => ({...p, requests: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('tasks'), s => setData(p => ({...p, tasks: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))), 
+                    onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('app_settings'), s => {
                         if (!s.empty) {
                             const d = s.docs.find(doc => doc.id === 'global') || s.docs[0];
@@ -376,7 +355,7 @@
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                             {!dbConn && <p className="text-red-400 text-xs">שגיאת חיבור לענן. בדוק הרשאות.</p>}
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 4.2 (Firebase Cloud Function Support)</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.1</div>
                     </div>
                 </div>
             );
@@ -397,17 +376,296 @@
                     <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
                         {currentUser.role === 'admin' ? 
                             <AdminDashboard data={data} settings={settings} /> : 
-                            <EmployeeDashboard employee={currentUser.data} data={data} settings={settings} />
+                            <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v4.2</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.1</footer>
                 </div>
             );
         }
 
-        // --- Admin ---
+        // --- Shared Component: Group Report Form ---
+        const GroupReportForm = ({ employeeId, settings, onSave, isAdmin, employees }) => {
+            const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+            const [time, setTime] = useState('10:00');
+            const [room, setRoom] = useState('');
+            const [customerName, setCustomerName] = useState('');
+            const [totalPlayers, setTotalPlayers] = useState(2);
+            const [groupType, setGroupType] = useState('משפחה');
+            const [source, setSource] = useState('גוגל');
+            const [kids, setKids] = useState(0);
+            const [eligible, setEligible] = useState(0); // סטודנט/חייל/נכה
+            
+            const [hasMegaLaan, setHasMegaLaan] = useState(false);
+            const [megaLaanPlayers, setMegaLaanPlayers] = useState(0);
+            const [megaLaanCode, setMegaLaanCode] = useState('');
+            const [isWeekendMegaLaan, setIsWeekendMegaLaan] = useState(false);
+
+            const [payments, setPayments] = useState({ cash: '', credit: '', bit: '', transfer: '' });
+            
+            const [saving, setSaving] = useState(false);
+            const [reportEmpId, setReportEmpId] = useState(employeeId);
+            const [fetchedCustomers, setFetchedCustomers] = useState([]);
+            const [isManualCustomer, setIsManualCustomer] = useState(true);
+            const [loadingCustomers, setLoadingCustomers] = useState(false);
+            const [tor4youError, setTor4youError] = useState(null); // משתנה לשמירת שגיאות
+
+            const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
+            
+            useEffect(() => {
+                if(roomList.length > 0 && !room) setRoom(roomList[0]);
+            }, [roomList]);
+
+            // Fetch customers from Tor4You Cloud Function
+            useEffect(() => {
+                const fetchAppts = async () => {
+                    setLoadingCustomers(true);
+                    setTor4youError(null);
+                    try {
+                        const res = await fetch(`${TOR4YOU_FUNCTION_URL}&date=${date}`);
+                        if(res.ok) {
+                            const data = await res.json();
+                            if (data.Tor4You_Raw_Response) {
+                                // אנחנו במצב דיבאג
+                                setTor4youError(JSON.stringify(data.Tor4You_Raw_Response, null, 2));
+                                setFetchedCustomers([]);
+                                setIsManualCustomer(true);
+                                setCustomerName('');
+                            } else if(data.customers && data.customers.length > 0) {
+                                setFetchedCustomers(data.customers);
+                                setIsManualCustomer(false);
+                                setCustomerName(data.customers[0]);
+                            } else {
+                                setFetchedCustomers([]);
+                                setIsManualCustomer(true);
+                                setCustomerName('');
+                                if (data.Tor4YouMessage) {
+                                     setTor4youError(JSON.stringify(data.Tor4YouMessage, null, 2));
+                                }
+                            }
+                        } else {
+                            throw new Error("Failed");
+                        }
+                    } catch (e) {
+                        console.warn("Tor4You API Fetch failed, defaulting to manual", e);
+                        setFetchedCustomers([]);
+                        setIsManualCustomer(true);
+                    } finally {
+                        setLoadingCustomers(false);
+                    }
+                };
+                fetchAppts();
+            }, [date]);
+
+            const basePricePerPlayer = getBasePrice(totalPlayers, settings.pricing);
+            const totalOriginalPrice = basePricePerPlayer * totalPlayers;
+            
+            let totalDiscountAmount = 0;
+            let expectedMegaLaanRevenue = 0;
+            let weekendMegaLaanFee = 0;
+
+            if (hasMegaLaan) {
+                // Mega Laan logic
+                const regularBaseMegaLaan = megaLaanPlayers * basePricePerPlayer;
+                expectedMegaLaanRevenue = Math.ceil(regularBaseMegaLaan * 0.78);
+                if (isWeekendMegaLaan) weekendMegaLaanFee = megaLaanPlayers * 10;
+                totalDiscountAmount = totalOriginalPrice - expectedMegaLaanRevenue; // Not a real discount for calculations, just for tracking
+            } else {
+                // Regular logic
+                const kidsDiscount = kids * basePricePerPlayer * (settings.pricing.discountKids / 100);
+                const eligibleDiscount = eligible * basePricePerPlayer * (settings.pricing.discountEligible / 100);
+                totalDiscountAmount = kidsDiscount + eligibleDiscount;
+            }
+
+            // The amount the customer needs to pay AT THE DESK (doesn't include mega laan theoretical revenue, but DOES include weekend fee or extra players)
+            let finalPriceToPay = 0;
+            if (hasMegaLaan) {
+                const extraPlayers = totalPlayers - megaLaanPlayers;
+                const extraPlayersCost = extraPlayers > 0 ? (extraPlayers * basePricePerPlayer) : 0;
+                finalPriceToPay = extraPlayersCost + weekendMegaLaanFee;
+            } else {
+                finalPriceToPay = totalOriginalPrice - totalDiscountAmount;
+            }
+
+            const totalEnteredPayment = Object.values(payments).reduce((acc, val) => acc + (Number(val) || 0), 0);
+            const paymentBalance = finalPriceToPay - totalEnteredPayment;
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (paymentBalance !== 0) {
+                    alert(`יש פער בתשלום! הלקוח צריך לשלם ${finalPriceToPay} אך הוזן ${totalEnteredPayment}`);
+                    return;
+                }
+                
+                let actualCustName = customerName;
+                if(!isManualCustomer && customerName === 'manual_entry') {
+                    actualCustName = document.getElementById('manualCustomerNameInput')?.value;
+                }
+                if(!actualCustName) return alert('נא להזין שם לקוח');
+
+                setSaving(true);
+                const groupData = {
+                    date, time, room, customerName: actualCustName, totalPlayers: Number(totalPlayers),
+                    groupType, source, kids: hasMegaLaan ? 0 : Number(kids), eligible: hasMegaLaan ? 0 : Number(eligible),
+                    hasMegaLaan, megaLaanPlayers: Number(megaLaanPlayers), megaLaanCode, isWeekendMegaLaan,
+                    totalOriginalPrice, totalDiscountAmount: hasMegaLaan ? 0 : totalDiscountAmount, finalPriceToPay,
+                    expectedMegaLaanRevenue,
+                    payments: {
+                        cash: Number(payments.cash) || 0, credit: Number(payments.credit) || 0,
+                        bit: Number(payments.bit) || 0, transfer: Number(payments.transfer) || 0
+                    },
+                    employeeId: reportEmpId,
+                    createdAt: new Date().toISOString()
+                };
+
+                try {
+                    // Save Group
+                    await timeoutPromise(addDoc(getCollectionRef('groups'), groupData), 4000);
+                    
+                    // Create Shift for Wage (Frozen wage at this moment)
+                    let wageAtTime = 0;
+                    if(reportEmpId !== 'admin') {
+                        const emp = employees?.find(e=>e.id === reportEmpId);
+                        if(emp) wageAtTime = emp.wagePerGame || 0;
+                    }
+                    await timeoutPromise(addDoc(getCollectionRef('shifts'), {
+                        employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, 
+                        status: 'pending', wageAtTime, isAutoGroup: true
+                    }), 4000);
+                    
+                    alert('קבוצה ומשמרת נשמרו בהצלחה!');
+                    onSave();
+                } catch(err) {
+                    if (err.message === 'Timeout') { alert('נשמר בענן (איטי)'); onSave(); }
+                    else alert(err.message);
+                } finally { setSaving(false); }
+            };
+
+            return (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                     {tor4youError && (
+                        <div className="bg-red-900/50 p-4 rounded-lg border border-red-500 text-sm">
+                            <h4 className="font-bold text-red-300">מידע דיבאג מ-Tor4You (העתק ושלח לי):</h4>
+                            <pre className="text-white mt-2 whitespace-pre-wrap">{tor4youError}</pre>
+                        </div>
+                    )}
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required />
+                        <div className="flex flex-col gap-1">
+                            <label className="text-sm opacity-70 font-medium text-dynamic">שעה</label>
+                            <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={time} onChange={e=>setTime(e.target.value)} required>
+                                {generateTimeOptions().map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-sm opacity-70 font-medium text-dynamic">שם לקוח {loadingCustomers && <Loader className="inline animate-spin w-3 h-3 ml-1"/>}</label>
+                            {!isManualCustomer && fetchedCustomers.length > 0 ? (
+                                <div className="space-y-2">
+                                    <select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={customerName} onChange={e=>setCustomerName(e.target.value)} required>
+                                        {fetchedCustomers.map(c => <option key={c} value={c}>{c}</option>)}
+                                        <option value="manual_entry">-- לקוח מזדמן / הזנה ידנית --</option>
+                                    </select>
+                                    {customerName === 'manual_entry' && <input id="manualCustomerNameInput" type="text" placeholder="הקלד שם לקוח" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" required/>}
+                                </div>
+                            ) : (
+                                <input type="text" value={customerName} onChange={e=>setCustomerName(e.target.value)} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" required />
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-sm opacity-70 font-medium text-dynamic">חדר</label>
+                            <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>
+                                {roomList.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-3 gap-4 border-t border-gray-800 pt-4">
+                        <Input label="כמות שחקנים כוללת" type="number" min="2" value={totalPlayers} onChange={e=>setTotalPlayers(e.target.value)} required />
+                        <div className="flex flex-col gap-1">
+                            <label className="text-sm opacity-70 font-medium text-dynamic">הרכב קבוצה</label>
+                            <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={groupType} onChange={e=>setGroupType(e.target.value)}>
+                                {['משפחה','חברים','צוות עבודה','בני זוג','גיבוש קבוצה'].map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-sm opacity-70 font-medium text-dynamic">מקור הגעה</label>
+                            <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={source} onChange={e=>setSource(e.target.value)}>
+                                {['גוגל','פייסבוק','EAZY','מפה לאוזן','אינסטגרם','טיקטוק'].map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Mega Laan Toggle */}
+                    <div className="bg-blue-900/20 p-4 rounded-lg border border-blue-800/50">
+                        <label className="flex items-center gap-2 cursor-pointer font-bold text-blue-300">
+                            <input type="checkbox" checked={hasMegaLaan} onChange={e=>{setHasMegaLaan(e.target.checked); if(e.target.checked){setKids(0);setEligible(0);}}} className="w-5 h-5"/>
+                            התקבל שובר מגה לאן
+                        </label>
+                        {hasMegaLaan && (
+                            <div className="mt-4 grid md:grid-cols-3 gap-4 fade-in">
+                                <Input label="על כמה שחקנים השובר?" type="number" min="1" max={totalPlayers} value={megaLaanPlayers} onChange={e=>setMegaLaanPlayers(e.target.value)} required/>
+                                <Input label="קוד שובר (5-6 ספרות)" value={megaLaanCode} onChange={e=>setMegaLaanCode(e.target.value)} required/>
+                                <label className="flex items-center gap-2 mt-6 cursor-pointer text-sm">
+                                    <input type="checkbox" checked={isWeekendMegaLaan} onChange={e=>setIsWeekendMegaLaan(e.target.checked)}/>
+                                    תוספת סופ"ש / חג (10₪ לשחקן)
+                                </label>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Discounts */}
+                    <div className={`grid md:grid-cols-2 gap-4 border-t border-gray-800 pt-4 ${hasMegaLaan ? 'opacity-30 pointer-events-none' : ''}`}>
+                        <Input label="ילדים (עד גיל 12)" type="number" min="0" value={kids} onChange={e=>setKids(e.target.value)} disabled={hasMegaLaan} />
+                        <Input label="סטודנט/חייל/נכה" type="number" min="0" value={eligible} onChange={e=>setEligible(e.target.value)} disabled={hasMegaLaan} />
+                    </div>
+
+                    {/* Calculation Summary */}
+                    <div className="bg-gray-800 p-4 rounded-lg flex flex-col gap-2">
+                        <div className="flex justify-between text-sm opacity-80"><span>מחיר מלא בסיס:</span> <span>₪{totalOriginalPrice} ({totalPlayers} שחקנים * ₪{basePricePerPlayer})</span></div>
+                        {!hasMegaLaan && totalDiscountAmount > 0 && <div className="flex justify-between text-sm text-red-400"><span>הנחות:</span> <span>-₪{totalDiscountAmount}</span></div>}
+                        {hasMegaLaan && <div className="flex justify-between text-sm text-blue-400"><span>מגה לאן צפוי (לרשום באקסל):</span> <span>₪{expectedMegaLaanRevenue} (22% מעוגל מעלה)</span></div>}
+                        {hasMegaLaan && isWeekendMegaLaan && <div className="flex justify-between text-sm text-yellow-400"><span>תוספת סופ"ש:</span> <span>₪{weekendMegaLaanFee}</span></div>}
+                        <div className="flex justify-between text-lg font-bold border-t border-gray-700 pt-2 mt-2">
+                            <span>סה"כ לתשלום בקופה:</span> 
+                            <span className="text-green-400">₪{finalPriceToPay}</span>
+                        </div>
+                    </div>
+
+                    {/* Payments */}
+                    <div className="border-t border-gray-800 pt-4">
+                        <h4 className="font-bold mb-3">חלוקת תשלום</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <Input label="מזומן (₪)" type="number" value={payments.cash} onChange={e=>setPayments({...payments, cash: e.target.value})} />
+                            <Input label="אשראי (₪)" type="number" value={payments.credit} onChange={e=>setPayments({...payments, credit: e.target.value})} />
+                            <Input label="ביט (₪)" type="number" value={payments.bit} onChange={e=>setPayments({...payments, bit: e.target.value})} />
+                            <Input label="העברה בנקאית (₪)" type="number" value={payments.transfer} onChange={e=>setPayments({...payments, transfer: e.target.value})} />
+                        </div>
+                        {paymentBalance !== 0 && (
+                            <div className={`mt-2 text-sm font-bold ${paymentBalance > 0 ? 'text-red-400' : 'text-yellow-400'}`}>
+                                יתרת תשלום להזנה: ₪{paymentBalance}
+                            </div>
+                        )}
+                    </div>
+
+                    {isAdmin && (
+                        <div className="border-t border-gray-800 pt-4">
+                            <label className="text-sm opacity-70 font-medium">המפעיל/ה</label>
+                            <select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white mt-1" value={reportEmpId} onChange={e=>setReportEmpId(e.target.value)}>
+                                <option value="admin">מנהל מערכת</option>
+                                {employees?.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    <Button type="submit" className="w-full py-3" disabled={saving || paymentBalance !== 0}>{saving ? 'שומר...' : 'שמור דיווח קבוצה'}</Button>
+                </form>
+            );
+        };
+
+
+        // --- Admin Dashboards ---
         const AdminDashboard = ({ data, settings }) => {
-            const [tab, setTab] = useState('employees');
+            const [tab, setTab] = useState('groups');
             const pendingReq = data.requests.filter(r => r.status === 'pending');
             const pendingCons = data.constraints.filter(c => c.status === 'pending');
             const pendingShifts = data.shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
@@ -415,14 +673,7 @@
             return (
                 <div className="space-y-6">
                     <div className="flex flex-wrap gap-2 border-b border-dynamic pb-2">
-                        {[
-                            {id:'employees', l:'עובדים', i:Users}, 
-                            {id:'shifts', l:'שכר עובדים', i:FileText}, 
-                            {id:'income', l:'הכנסות וקבוצות', i:DollarSign}, 
-                            {id:'constraints', l:'זמינות', i:Calendar}, 
-                            {id:'tasks', l:'משימות', i:CheckSquare}, 
-                            {id:'settings', l:'הגדרות', i:Settings}
-                        ].map(m => 
+                        {[{id:'groups', l:'הכנסות וקבוצות', i:Coins}, {id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות שכר', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'tasks', l:'משימות', i:CheckSquare}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
                             <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}><m.i size={18} className="icon-dynamic"/> {m.l} 
                             {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
                             {m.id === 'shifts' && pendingShifts.length > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingShifts.length}</span>}
@@ -431,13 +682,190 @@
                         {pendingReq.length > 0 && <button onClick={()=>setTab('requests')} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg ml-auto transition-colors ${tab==='requests'?'bg-indigo-600/10 border-b-2 border-indigo-500':'text-yellow-400'}`}><Bell size={18} className="animate-bounce"/><span className="font-bold">{pendingReq.length}</span></button>}
                     </div>
                     <div className="fade-in">
+                        {tab==='groups' && <AdminGroups groups={data.groups} employees={data.employees} settings={settings}/>}
                         {tab==='employees' && <AdminEmployees employees={data.employees}/>}
                         {tab==='shifts' && <AdminReports employees={data.employees} shifts={data.shifts} settings={settings}/>}
-                        {tab==='income' && <AdminIncome groups={data.groups} employees={data.employees} settings={settings} shifts={data.shifts}/>}
                         {tab==='constraints' && <AdminConstraints employees={data.employees} constraints={data.constraints} settings={settings}/>}
                         {tab==='tasks' && <AdminTasks employees={data.employees} tasks={data.tasks}/>}
                         {tab==='settings' && <AdminSettings settings={settings}/>}
                         {tab==='requests' && <AdminRequests requests={pendingReq} employees={data.employees}/>}
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminGroups = ({ groups, employees, settings }) => {
+            const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+            const [showManual, setShowManual] = useState(false);
+            
+            const monthGroups = groups.filter(g => g.date.startsWith(month)).sort((a,b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+            
+            const totalCash = monthGroups.reduce((acc, g) => acc + (g.payments?.cash || 0), 0);
+            const totalCredit = monthGroups.reduce((acc, g) => acc + (g.payments?.credit || 0), 0);
+            const totalBit = monthGroups.reduce((acc, g) => acc + (g.payments?.bit || 0), 0);
+            const totalTransfer = monthGroups.reduce((acc, g) => acc + (g.payments?.transfer || 0), 0);
+            
+            const totalMegaLaanRevenue = monthGroups.reduce((acc, g) => acc + (g.expectedMegaLaanRevenue || 0), 0);
+            const totalRevenue = totalCash + totalCredit + totalBit + totalTransfer;
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
+                            <Button onClick={() => exportToXLSGroups(monthGroups, employees, `Groups_${month}.xls`)} variant="success"><Download size={16}/> ייצא לאקסל</Button>
+                        </div>
+                        <Button onClick={()=>setShowManual(true)}><Plus size={16}/> דיווח ידני</Button>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <Card className="text-center"><div className="opacity-70 text-sm">מזומן</div><div className="text-2xl font-bold">₪{totalCash}</div></Card>
+                        <Card className="text-center"><div className="opacity-70 text-sm">אשראי</div><div className="text-2xl font-bold">₪{totalCredit}</div></Card>
+                        <Card className="text-center"><div className="opacity-70 text-sm">ביט</div><div className="text-2xl font-bold">₪{totalBit}</div></Card>
+                        <Card className="text-center"><div className="opacity-70 text-sm">העברה בנקאית</div><div className="text-2xl font-bold">₪{totalTransfer}</div></Card>
+                        <Card className="text-center border-blue-500/50"><div className="text-blue-300 text-sm font-bold">צפי החזר שוברים</div><div className="text-2xl font-bold text-blue-400">₪{totalMegaLaanRevenue}</div></Card>
+                    </div>
+                    
+                    <Card title={`הכנסות החודש מקופות: ₪${totalRevenue}`} className="border-green-500/30">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right text-sm whitespace-nowrap">
+                                <thead className="opacity-70 border-b border-gray-700">
+                                    <tr><th>תאריך ושעה</th><th>מפעיל</th><th>חדר</th><th>לקוח</th><th>שחקנים</th><th>סוג</th><th>סה"כ לקופה</th><th>אמצעים</th><th>מחיקה</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
+                                    {monthGroups.length === 0 && <tr><td colSpan="9" className="text-center py-4">אין דיווחים החודש</td></tr>}
+                                    {monthGroups.map(g => {
+                                        const empName = g.employeeId === 'admin' ? 'מנהל' : (employees.find(e => e.id === g.employeeId)?.name || '');
+                                        const pays = [];
+                                        if(g.payments?.cash) pays.push(`מזומן:${g.payments.cash}`);
+                                        if(g.payments?.credit) pays.push(`אשראי:${g.payments.credit}`);
+                                        if(g.payments?.bit) pays.push(`ביט:${g.payments.bit}`);
+                                        if(g.payments?.transfer) pays.push(`העברה:${g.payments.transfer}`);
+                                        if(g.hasMegaLaan) pays.push(`מגה לאן`);
+                                        return (
+                                            <tr key={g.id} className="hover:bg-white/5">
+                                                <td className="py-2">{formatDateIL(g.date)} {g.time}</td>
+                                                <td>{empName}</td>
+                                                <td>{g.room}</td>
+                                                <td>{g.customerName}</td>
+                                                <td>{g.totalPlayers}</td>
+                                                <td>{g.groupType}</td>
+                                                <td className="font-bold text-green-400">₪{g.finalPriceToPay}</td>
+                                                <td className="text-xs opacity-70">{pays.join(', ')}</td>
+                                                <td><button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-400"><Trash2 size={14}/></button></td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+
+                    {showManual && (
+                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3>
+                                    <button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button>
+                                </div>
+                                <GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const AdminReports = ({ employees, shifts, settings }) => {
+            const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+            
+            // Only approved shifts contribute to payroll
+            const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
+            const pendingShifts = shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
+
+            const report = employees.map(emp => {
+                const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id).sort((a,b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
+                const totalWage = empShifts.reduce((acc, s) => acc + (Number(s.gamesCount) * (s.wageAtTime || emp.wagePerGame)), 0);
+                return { ...emp, totalWage, empShifts };
+            });
+            const totalPay = report.reduce((acc, r) => acc + r.totalWage, 0);
+
+            const handleShiftStatus = async (id, newStatus) => {
+                await updateDoc(getDocRef('shifts', id), { status: newStatus, approved: newStatus === 'approved' });
+            };
+
+            const sendMail = (emp) => {
+                const subj = replacePlaceholders(settings.emailTemplate.subject, { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] });
+                const body = replacePlaceholders(settings.emailTemplate.body, { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] });
+                const link = settings.senderEmail.includes('gmail') 
+                    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${emp.email}&su=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`
+                    : `mailto:${emp.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+                window.open(link, '_blank');
+            };
+
+            return (
+                <div className="space-y-6">
+                    {pendingShifts.length > 0 && (
+                        <Card title="משמרות ממתינות לאישור" className="border-yellow-500/50">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-right text-sm">
+                                    <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך</th><th>שעה</th><th>חדר</th><th>משחקים</th><th>תעריף משומר</th><th>פעולות</th></tr></thead>
+                                    <tbody className="divide-y divide-gray-800">
+                                        {pendingShifts.map(s => {
+                                            const e = employees.find(emp => emp.id === s.employeeId);
+                                            const wage = s.wageAtTime || e?.wagePerGame || 0;
+                                            return (
+                                                <tr key={s.id} className="hover:bg-gray-800/30">
+                                                    <td className="py-2 font-bold">{e?.name}</td>
+                                                    <td>{formatDateIL(s.date)}</td>
+                                                    <td>{s.startTime}</td>
+                                                    <td>{s.room}</td>
+                                                    <td>{s.gamesCount}</td>
+                                                    <td>₪{wage} {s.isAutoGroup && '(מאוטומטי)'}</td>
+                                                    <td className="flex gap-2 py-2">
+                                                        <Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, 'approved')}><Check size={14}/></Button>
+                                                        <Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, 'rejected')}><XIcon size={14}/></Button>
+                                                        <button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('shifts', s.id))} className="text-red-400 mr-2"><Trash2 size={14}/></button>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Card>
+                    )}
+
+                    <div className="flex justify-between items-center card-bg p-4 rounded-xl">
+                        <div><h2 className="text-xl font-bold text-dynamic">דוחות שכר ({month})</h2><p className="text-dynamic opacity-80">סה"כ לתשלום: <span className="text-green-400 font-bold">₪{totalPay.toLocaleString()}</span></p></div>
+                        <div className="flex gap-2">
+                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
+                            <Button onClick={() => exportToXLSSalary(report, `Salary_Report_${month}.xls`)} variant="success"><Download size={16}/> אקסל</Button>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        {report.map(r => (
+                            <div key={r.id} className="card-bg rounded-xl overflow-hidden">
+                                <div className="p-4 flex justify-between items-center">
+                                    <div className="flex items-center gap-3"><div className="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold text-white">{r.name[0]}</div><span className="text-lg font-bold text-dynamic">{r.name}</span></div>
+                                    <div className="text-green-400 font-bold text-xl">₪{r.totalWage}</div>
+                                    <Button size="sm" variant="outline" onClick={() => sendMail(r)}><Mail size={16}/></Button>
+                                </div>
+                                {r.empShifts.length > 0 && (
+                                    <div className="bg-black/20 p-2 text-sm border-t border-gray-800">
+                                        <div className="grid grid-cols-7 text-gray-500 mb-2 px-2 text-xs font-bold"><div>תאריך</div><div>שעה</div><div>חדר</div><div>משחקים</div><div>תעריף</div><div>סה"כ</div><div>מחק</div></div>
+                                        {r.empShifts.map(s => {
+                                            const w = s.wageAtTime || r.wagePerGame;
+                                            return (
+                                            <div key={s.id} className="grid grid-cols-7 py-2 px-2 border-b border-gray-800 items-center hover:bg-white/5 text-dynamic opacity-80">
+                                                <div>{formatDateIL(s.date)}</div><div>{s.startTime}</div><div>{s.room}</div><div>{s.gamesCount}</div><div>₪{w}</div><div>₪{s.gamesCount * w}</div>
+                                                <button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('shifts', s.id))} className="text-red-500"><Trash2 size={14}/></button>
+                                            </div>
+                                        )})}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 </div>
             );
@@ -480,9 +908,8 @@
                                 <p className="text-sm opacity-70">{e.phone}</p>
                                 <div className="mt-2 text-sm opacity-60">
                                     <div>קוד: {e.code}</div>
-                                    <div>תעריף: ₪{e.wagePerGame}</div>
+                                    <div>תעריף נוכחי למשחק: ₪{e.wagePerGame}</div>
                                     <div>יום הולדת: {formatDateIL(e.birthday) || '-'}</div>
-                                    <div className="text-xs mt-1">{e.skills.join(', ')}</div>
                                 </div>
                             </Card>
                         ))}
@@ -499,7 +926,7 @@
                                         <Input label="קוד" name="code" required defaultValue={edit?.code}/>
                                         <Input label="כתובת" name="address" className="col-span-2" defaultValue={edit?.address}/>
                                         <Input label="יום הולדת" name="birthday" type="date" defaultValue={edit?.birthday}/>
-                                        <Input label="שכר למשחק" name="wagePerGame" type="number" required defaultValue={edit?.wagePerGame}/>
+                                        <Input label="שכר למשחק (מעודכן מכאן והלאה)" name="wagePerGame" type="number" required defaultValue={edit?.wagePerGame}/>
                                         <Input label="הסמכות (מופרד בפסיק)" name="skills" className="col-span-2" defaultValue={edit?.skills?.join(', ')}/>
                                     </div>
                                     <div className="flex gap-2"><input type="checkbox" name="form101" defaultChecked={edit?.form101}/> <label>טופס 101</label></div>
@@ -510,203 +937,6 @@
                     )}
                 </div>
             );
-        };
-
-        const AdminReports = ({ employees, shifts, settings }) => {
-            const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-            
-            const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved').sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
-            const pendingShifts = shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false)).sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
-
-            const report = employees.map(emp => {
-                const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id);
-                const totalWage = empShifts.reduce((acc, s) => {
-                    const wageToUse = s.wagePerGameAtTime ? s.wagePerGameAtTime : emp.wagePerGame;
-                    return acc + (Number(s.gamesCount) * wageToUse);
-                }, 0);
-                return { ...emp, totalWage, empShifts };
-            });
-            const totalPay = report.reduce((acc, r) => acc + r.totalWage, 0);
-
-            const handleShiftStatus = async (id, newStatus) => {
-                await updateDoc(getDocRef('shifts', id), { status: newStatus, approved: newStatus === 'approved' });
-            };
-
-            const doExport = () => {
-                exportToXLS(report, `Salary_Report_${month}.xls`);
-            };
-
-            const sendMail = (emp) => {
-                const subj = replacePlaceholders(settings.emailTemplate.subject, { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] });
-                const body = replacePlaceholders(settings.emailTemplate.body, { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] });
-                const link = settings.senderEmail.includes('gmail') 
-                    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${emp.email}&su=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`
-                    : `mailto:${emp.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
-                window.open(link, '_blank');
-            };
-
-            return (
-                <div className="space-y-6">
-                    {pendingShifts.length > 0 && (
-                        <Card title="משמרות ממתינות לאישור">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-right text-sm">
-                                    <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך התחלה</th><th>תאריך סיום</th><th>טווח שעות</th><th>חדר</th><th>משחקים</th><th>פעולות</th></tr></thead>
-                                    <tbody className="divide-y divide-gray-800">
-                                        {pendingShifts.map(s => {
-                                            const e = employees.find(emp => emp.id === s.employeeId);
-                                            const endTime = addTime(s.startTime, s.gamesCount * 90);
-                                            return (
-                                                <tr key={s.id} className="hover:bg-gray-800/30">
-                                                    <td className="py-2 font-bold">{e?.name}</td>
-                                                    <td>{formatDateIL(s.date)}</td>
-                                                    <td>{formatDateIL(s.date)}</td> 
-                                                    <td>{s.startTime} - {endTime}</td>
-                                                    <td>{s.room}</td>
-                                                    <td>{s.gamesCount}</td>
-                                                    <td className="flex gap-2 py-2">
-                                                        <Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, 'approved')}><Check size={14}/></Button>
-                                                        <Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, 'rejected')}><XIcon size={14}/></Button>
-                                                    </td>
-                                                </tr>
-                                            )
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </Card>
-                    )}
-
-                    <div className="flex justify-between items-center card-bg p-4 rounded-xl">
-                        <div><h2 className="text-xl font-bold text-dynamic">דוחות שכר ({month})</h2><p className="text-dynamic opacity-80">סה"כ לתשלום: <span className="text-green-400 font-bold">₪{totalPay.toLocaleString()}</span></p></div>
-                        <div className="flex gap-2">
-                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
-                            <Button onClick={doExport} variant="success"><Download size={16}/> אקסל</Button>
-                        </div>
-                    </div>
-                    <div className="space-y-4">
-                        {report.map(r => (
-                            <div key={r.id} className="card-bg rounded-xl overflow-hidden">
-                                <div className="p-4 flex justify-between items-center">
-                                    <div className="flex items-center gap-3"><div className="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold text-white">{r.name[0]}</div><span className="text-lg font-bold text-dynamic">{r.name}</span></div>
-                                    <div className="text-green-400 font-bold text-xl">₪{r.totalWage}</div>
-                                    <Button size="sm" variant="outline" onClick={() => sendMail(r)}><Mail size={16}/></Button>
-                                </div>
-                                {r.empShifts.length > 0 && (
-                                    <div className="bg-black/20 p-2 text-sm border-t border-gray-800">
-                                        <div className="grid grid-cols-6 text-gray-500 mb-2 px-2 text-xs font-bold"><div>תאריך</div><div>שעה</div><div>חדר</div><div>משחקים</div><div>תעריף</div><div>מחק</div></div>
-                                        {r.empShifts.map(s => {
-                                            const activeWage = s.wagePerGameAtTime || r.wagePerGame;
-                                            return (
-                                            <div key={s.id} className="grid grid-cols-6 py-2 px-2 border-b border-gray-800 items-center hover:bg-white/5 text-dynamic opacity-80">
-                                                <div>{formatDateIL(s.date)}</div><div>{s.startTime}</div><div>{s.room}</div><div>{s.gamesCount}</div>
-                                                <div className="text-indigo-300">₪{activeWage}</div>
-                                                <button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('shifts', s.id))} className="text-red-500"><Trash2 size={14}/></button>
-                                            </div>
-                                        )})}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        };
-
-        const AdminIncome = ({ groups, employees, settings, shifts }) => {
-            const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-            const [manualGroupModal, setManualGroupModal] = useState(false);
-            const monthlyGroups = groups.filter(g => g.date.startsWith(month)).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-            
-            // Summaries
-            let sumCash=0, sumCredit=0, sumBit=0, sumTransfer=0, sumTotal=0;
-            let sumVouchersWorth = 0;
-
-            monthlyGroups.forEach(g => {
-                const val = Number(g.finalPrice) || 0;
-                sumTotal += val;
-                sumCash += Number(g.payments?.cash) || 0;
-                sumCredit += Number(g.payments?.credit) || 0;
-                sumBit += Number(g.payments?.bit) || 0;
-                sumTransfer += Number(g.payments?.transfer) || 0;
-                sumVouchersWorth += Number(g.voucherWorth) || 0;
-            });
-
-            return (
-                <div className="space-y-6">
-                    <div className="flex justify-between items-center card-bg p-4 rounded-xl">
-                        <div><h2 className="text-xl font-bold text-dynamic">דוח קבוצות והכנסות ({month})</h2></div>
-                        <div className="flex gap-2">
-                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
-                            <Button onClick={() => exportGroupsToXLS(monthlyGroups, employees, `Groups_Report_${month}.xls`)} variant="success"><Download size={16}/> אקסל</Button>
-                            <Button onClick={() => setManualGroupModal(true)} variant="secondary"><Plus size={16}/> דיווח מנהל</Button>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                        <Card className="text-center p-4 border-b-4 border-b-green-500"><div className="text-sm opacity-70">סה"כ הכנסות ישירות</div><div className="text-xl font-bold text-green-400">₪{sumTotal}</div></Card>
-                        <Card className="text-center p-4 border-b-4 border-b-indigo-500"><div className="text-sm opacity-70">צפי החזר שוברים</div><div className="text-xl font-bold text-indigo-400">₪{sumVouchersWorth}</div></Card>
-                        <Card className="text-center p-4"><div className="text-sm opacity-70">מזומן</div><div className="text-xl font-bold">₪{sumCash}</div></Card>
-                        <Card className="text-center p-4"><div className="text-sm opacity-70">אשראי</div><div className="text-xl font-bold">₪{sumCredit}</div></Card>
-                        <Card className="text-center p-4"><div className="text-sm opacity-70">ביט</div><div className="text-xl font-bold">₪{sumBit}</div></Card>
-                        <Card className="text-center p-4"><div className="text-sm opacity-70">העברה בנקאית</div><div className="text-xl font-bold">₪{sumTransfer}</div></Card>
-                    </div>
-
-                    <Card title="פירוט קבוצות">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-right text-sm whitespace-nowrap">
-                                <thead className="text-gray-400 border-b border-gray-700">
-                                    <tr><th>תאריך</th><th>שעה</th><th>חדר</th><th>לקוח</th><th>עובד</th><th>שחקנים</th><th>סה"כ שולם</th><th>אמצעי תשלום עיקרי</th><th>מחק</th></tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
-                                    {monthlyGroups.map(g => {
-                                        let empName = '-';
-                                        if (g.employeeId === 'admin') empName = 'מנהל';
-                                        else {
-                                            const emp = employees.find(e => e.id === g.employeeId);
-                                            if (emp) empName = emp.name;
-                                        }
-
-                                        let pt = [];
-                                        if(g.payments.cash > 0) pt.push('מזומן');
-                                        if(g.payments.credit > 0) pt.push('אשראי');
-                                        if(g.payments.bit > 0) pt.push('ביט');
-                                        if(g.payments.transfer > 0) pt.push('העברה');
-                                        if(g.hasVoucher) pt.push('שובר');
-
-                                        return (
-                                            <tr key={g.id} className="hover:bg-white/5">
-                                                <td className="py-2">{formatDateIL(g.date)}</td>
-                                                <td>{g.time}</td>
-                                                <td>{g.room}</td>
-                                                <td className="font-bold">{g.customerName}</td>
-                                                <td>{empName}</td>
-                                                <td>{g.totalPlayers}</td>
-                                                <td className="font-bold text-green-400">₪{g.finalPrice}</td>
-                                                <td className="text-xs text-indigo-300">{pt.join(' + ')}</td>
-                                                <td><button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-500"><Trash2 size={14}/></button></td>
-                                            </tr>
-                                        )
-                                    })}
-                                    {monthlyGroups.length === 0 && <tr><td colSpan="9" className="text-center py-4 opacity-50">אין נתונים לחודש זה</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
-                    </Card>
-                    
-                    {manualGroupModal && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3>
-                                    <button onClick={()=>setManualGroupModal(false)}><XIcon size={24}/></button>
-                                </div>
-                                <EmployeeGroups employee={{id:'admin', name:'מנהל', skills:[], wagePerGame:0}} settings={settings} onComplete={()=>setManualGroupModal(false)} isAdmin={true} employeesList={employees}/>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )
         };
 
         const AdminConstraints = ({ employees, constraints, settings }) => {
@@ -749,14 +979,11 @@
 
             const sortedConstraints = useMemo(() => {
                 return [...constraints].sort((a, b) => {
-                    const empA = employees.find(e => e.id === a.employeeId)?.name || '';
-                    const empB = employees.find(e => e.id === b.employeeId)?.name || '';
-                    if (empA !== empB) return empA.localeCompare(empB);
                     const dateA = a.type === 'range' ? a.startDate : a.date;
                     const dateB = b.type === 'range' ? b.startDate : b.date;
-                    return dateA.localeCompare(dateB);
+                    return dateB.localeCompare(dateA);
                 });
-            }, [constraints, employees]);
+            }, [constraints]);
 
             return (
                 <div className="space-y-6">
@@ -833,12 +1060,11 @@
                 alert('משימה נוספה'); setDesc(''); setDeadline(''); setEmpId('');
             };
 
-            const delTask = async (id) => { if(confirm("למחוק?")) await deleteDoc(getDocRef('tasks', id)); };
+            const delTask = async (id) => { if(confirm("למחוק משימה?")) await deleteDoc(getDocRef('tasks', id)); };
 
             const pending = tasks.filter(t => t.status === 'pending');
-            const completed = tasks.filter(t => t.status === 'completed')
-                                   .sort((a,b) => new Date(b.completedAt) - new Date(a.completedAt))
-                                   .slice(0, 3); // Shows only last 3
+            // Show only last 3 completed tasks
+            const completed = tasks.filter(t => t.status === 'completed').sort((a,b)=>b.completedAt.localeCompare(a.completedAt)).slice(0, 3);
 
             return (
                 <div className="space-y-6">
@@ -927,401 +1153,145 @@
             const update = async (k, v) => await setDoc(getDocRef('app_settings', 'global'), { ...settings, [k]: v }, { merge: true });
             const handleTemplate = async (k, v) => await update('emailTemplate', { ...settings.emailTemplate, [k]: v });
             const handlePricing = async (k, v) => await update('pricing', { ...settings.pricing, [k]: Number(v) });
-            const handleDiscount = async (k, v) => await update('discounts', { ...settings.discounts, [k]: Number(v) });
-            
             const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             const hebrewDays = { Sunday: 'ראשון', Monday: 'שני', Tuesday: 'שלישי', Wednesday: 'רביעי', Thursday: 'חמישי', Friday: 'שישי', Saturday: 'שבת' };
 
             return (
                 <div className="grid md:grid-cols-2 gap-6">
-                    <Card title="כללי">
+                    <Card title="מחירון והנחות">
                         <div className="space-y-4">
-                            <Input label="שם העסק" value={settings.businessName} onChange={e => update('businessName', e.target.value)} />
-                            <Input label="רשימת חדרים (מופרד בפסיק)" value={settings.roomsList || 'סודו של הודיני'} onChange={e => update('roomsList', e.target.value)} placeholder="סודו של הודיני, החדר האפל" />
-                            <Input label="קוד כניסה למנהל" value={settings.adminCode} onChange={e => update('adminCode', e.target.value)} />
-                            <Input label="כתובת מייל לשליחה" value={settings.senderEmail} onChange={e => update('senderEmail', e.target.value)} />
+                            <h4 className="font-bold text-sm text-indigo-400">בסיס למשתתף (לא משפיע רטרואקטיבית)</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Input label="2 שחקנים" type="number" value={settings.pricing?.basePrice2} onChange={e => handlePricing('basePrice2', e.target.value)} />
+                                <Input label="3 שחקנים" type="number" value={settings.pricing?.basePrice3} onChange={e => handlePricing('basePrice3', e.target.value)} />
+                                <Input label="4 שחקנים" type="number" value={settings.pricing?.basePrice4} onChange={e => handlePricing('basePrice4', e.target.value)} />
+                                <Input label="5 שחקנים" type="number" value={settings.pricing?.basePrice5} onChange={e => handlePricing('basePrice5', e.target.value)} />
+                                <Input label="6-8 שחקנים" type="number" value={settings.pricing?.basePrice6to8} onChange={e => handlePricing('basePrice6to8', e.target.value)} />
+                                <Input label="9-10 שחקנים" type="number" value={settings.pricing?.basePrice9to10} onChange={e => handlePricing('basePrice9to10', e.target.value)} />
+                            </div>
+                            <h4 className="font-bold text-sm text-indigo-400 mt-4">אחוזי הנחה</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Input label="ילדים (%)" type="number" value={settings.pricing?.discountKids} onChange={e => handlePricing('discountKids', e.target.value)} />
+                                <Input label="זכאים (%)" type="number" value={settings.pricing?.discountEligible} onChange={e => handlePricing('discountEligible', e.target.value)} />
+                            </div>
                         </div>
                     </Card>
-                    <Card title="עיצוב">
-                        <div className="space-y-4">
-                            <div className="space-y-1"><label className="text-sm opacity-70">צבע רקע (ראשי)</label><input type="color" value={settings.primaryColor} onChange={e => update('primaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div>
-                            <div className="space-y-1"><label className="text-sm opacity-70">צבע טקסט (משני)</label><input type="color" value={settings.secondaryColor} onChange={e => update('secondaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div>
-                            <div className="space-y-1"><label className="text-sm opacity-70">לוגו (URL)</label><input className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white" value={settings.logo || ''} onChange={e => update('logo', e.target.value)} /></div>
-                        </div>
-                    </Card>
-                    <Card title="מחירון לקבוצות (מחיר בסיס לאדם)">
-                        <div className="grid grid-cols-2 gap-4">
-                            <Input label="2 שחקנים" type="number" value={settings.pricing?.p2 || ''} onChange={e => handlePricing('p2', e.target.value)} />
-                            <Input label="3 שחקנים" type="number" value={settings.pricing?.p3 || ''} onChange={e => handlePricing('p3', e.target.value)} />
-                            <Input label="4 שחקנים" type="number" value={settings.pricing?.p4 || ''} onChange={e => handlePricing('p4', e.target.value)} />
-                            <Input label="5 שחקנים" type="number" value={settings.pricing?.p5 || ''} onChange={e => handlePricing('p5', e.target.value)} />
-                            <Input label="6-8 שחקנים" type="number" value={settings.pricing?.p6to8 || ''} onChange={e => handlePricing('p6to8', e.target.value)} />
-                            <Input label="9-10 שחקנים" type="number" value={settings.pricing?.p9to10 || ''} onChange={e => handlePricing('p9to10', e.target.value)} />
-                        </div>
-                    </Card>
-                    <Card title="הנחות (%)">
-                        <div className="space-y-4">
-                             <Input label="ילדים (עד גיל 12)" type="number" value={settings.discounts?.kids || ''} onChange={e => handleDiscount('kids', e.target.value)} />
-                             <Input label="סטודנט/חייל/נכה" type="number" value={settings.discounts?.special || ''} onChange={e => handleDiscount('special', e.target.value)} />
-                        </div>
-                    </Card>
-                    <div className="col-span-full grid md:grid-cols-2 gap-6">
-                        <Card title="תבנית אימייל">
+                    <div className="space-y-6">
+                        <Card title="כללי">
                             <div className="space-y-4">
-                                <Input label="נושא" value={settings.emailTemplate.subject} onChange={e => handleTemplate('subject', e.target.value)} />
-                                <div className="space-y-1">
-                                    <label className="text-sm opacity-70">תוכן (משתנים: {`{name}, {month}, {year}`})</label>
-                                    <textarea className="w-full bg-gray-800 border border-gray-700 rounded p-2 h-32 text-white" value={settings.emailTemplate.body} onChange={e => handleTemplate('body', e.target.value)} />
-                                </div>
+                                <Input label="שם העסק" value={settings.businessName} onChange={e => update('businessName', e.target.value)} />
+                                <Input label="קוד כניסה למנהל" value={settings.adminCode} onChange={e => update('adminCode', e.target.value)} />
+                                <Input label="רשימת חדרים (מופרד בפסיק)" value={settings.roomsList} onChange={e => update('roomsList', e.target.value)} />
                             </div>
                         </Card>
-                        <Card title="שעות פעילות">
-                            {days.map(d => {
-                                const h = settings.openingHours[d] || {start:'00:00', end:'00:00'};
-                                return (
-                                    <div key={d} className="flex justify-between items-center my-2 text-sm text-dynamic">
-                                        <span className="w-16 font-bold">{hebrewDays[d]}</span>
-                                        <div className="flex gap-2">
-                                            <input type="time" value={h.start} onChange={e => update('openingHours', {...settings.openingHours, [d]: {...h, start: e.target.value}})} className="bg-gray-800 rounded p-1"/>
-                                            <span>-</span>
-                                            <input type="time" value={h.end} onChange={e => update('openingHours', {...settings.openingHours, [d]: {...h, end: e.target.value}})} className="bg-gray-800 rounded p-1"/>
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                        <Card title="עיצוב">
+                            <div className="space-y-4">
+                                <div className="space-y-1"><label className="text-sm opacity-70">צבע רקע (ראשי)</label><input type="color" value={settings.primaryColor} onChange={e => update('primaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div>
+                                <div className="space-y-1"><label className="text-sm opacity-70">צבע טקסט (משני)</label><input type="color" value={settings.secondaryColor} onChange={e => update('secondaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div>
+                                <div className="space-y-1"><label className="text-sm opacity-70">לוגו (URL)</label><input className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white" value={settings.logo || ''} onChange={e => update('logo', e.target.value)} /></div>
+                            </div>
                         </Card>
                     </div>
+                    <Card title="תבנית אימייל לשכר">
+                        <div className="space-y-4">
+                            <Input label="נושא" value={settings.emailTemplate.subject} onChange={e => handleTemplate('subject', e.target.value)} />
+                            <div className="space-y-1">
+                                <label className="text-sm opacity-70">תוכן (משתנים: {`{name}, {month}, {year}`})</label>
+                                <textarea className="w-full bg-gray-800 border border-gray-700 rounded p-2 h-32 text-white" value={settings.emailTemplate.body} onChange={e => handleTemplate('body', e.target.value)} />
+                            </div>
+                            <Input label="מייל העסק" value={settings.senderEmail} onChange={e => update('senderEmail', e.target.value)} />
+                        </div>
+                    </Card>
+                    <Card title="שעות פעילות">
+                        {days.map(d => {
+                            const h = settings.openingHours[d] || {start:'00:00', end:'00:00'};
+                            return (
+                                <div key={d} className="flex justify-between items-center my-2 text-sm text-dynamic">
+                                    <span className="w-16 font-bold">{hebrewDays[d]}</span>
+                                    <div className="flex gap-2">
+                                        <input type="time" value={h.start} onChange={e => update('openingHours', {...settings.openingHours, [d]: {...h, start: e.target.value}})} className="bg-gray-800 rounded p-1"/>
+                                        <span>-</span>
+                                        <input type="time" value={h.end} onChange={e => update('openingHours', {...settings.openingHours, [d]: {...h, end: e.target.value}})} className="bg-gray-800 rounded p-1"/>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </Card>
                 </div>
             );
         };
 
         // --- Employee Views ---
-        const EmployeeDashboard = ({ employee, data, settings }) => {
-            const [tab, setTab] = useState('group');
-            const myPendingTasks = data.tasks ? data.tasks.filter(t => t.assigneeId === employee.id && t.status === 'pending') : [];
+        const EmployeeDashboard = ({ employee, shifts, constraints, settings, tasks, groups }) => {
+            const [tab, setTab] = useState('report');
+            const myPendingTasks = tasks ? tasks.filter(t => t.assigneeId === employee.id && t.status === 'pending') : [];
 
             return (
                 <div className="space-y-6">
                     <div className="flex card-bg p-1 rounded-lg w-fit overflow-x-auto max-w-full">
-                        {[
-                            {id:'group', l:'דיווח קבוצה'},
-                            {id:'report', l:'דיווח משמרת ידני'}, 
-                            {id:'constraints', l:'אילוצים'}, 
-                            {id:'tasks', l:'משימות', c:myPendingTasks.length}, 
-                            {id:'profile', l:'פרופיל'}
-                        ].map(t => (
-                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-6 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>
+                        {[{id:'report', l:'דיווח קבוצה'}, {id:'history', l:'היסטוריית דיווחים'}, {id:'constraints', l:'אילוצים'}, {id:'tasks', l:'משימות', c:myPendingTasks.length}, {id:'profile', l:'פרופיל'}].map(t => (
+                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>
                                 {t.l}
                                 {t.c > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{t.c}</span>}
                             </button>
                         ))}
                     </div>
-                    {tab==='group' && <EmployeeGroups employee={employee} settings={settings} />}
-                    {tab==='report' && <EmployeeReport employee={employee} shifts={data.shifts} settings={settings}/>}
-                    {tab==='constraints' && <EmployeeConstraints employee={employee} constraints={data.constraints}/>}
-                    {tab==='tasks' && <EmployeeTasks employee={employee} tasks={data.tasks}/>}
-                    {tab==='profile' && <EmployeeProfile employee={employee} shifts={data.shifts}/>}
+                    {tab==='report' && <Card title="דיווח קבוצה חדשה"><GroupReportForm employeeId={employee.id} settings={settings} onSave={() => setTab('history')}/></Card>}
+                    {tab==='history' && <EmployeeHistory employee={employee} groups={groups} shifts={shifts}/>}
+                    {tab==='constraints' && <EmployeeConstraints employee={employee} constraints={constraints}/>}
+                    {tab==='tasks' && <EmployeeTasks employee={employee} tasks={tasks}/>}
+                    {tab==='profile' && <EmployeeProfile employee={employee} shifts={shifts}/>}
                 </div>
             );
         };
-
-        const EmployeeGroups = ({ employee, settings, onComplete, isAdmin = false, employeesList = [] }) => {
-            const roomsArray = settings.roomsList ? settings.roomsList.split(',').map(s=>s.trim()) : ['סודו של הודיני'];
-
-            const [g, setG] = useState({
-                employeeId: employee.id, 
-                date: new Date().toISOString().slice(0, 10), time: '', room: roomsArray[0],
-                customerName: '', totalPlayers: 2, kidsCount: 0, specialCount: 0,
-                groupType: 'משפחה', referral: 'גוגל', hasVoucher: false, voucherPlayers: 0, voucherCode: '',
-                isWeekend: false, payments: { cash: 0, credit: 0, bit: 0, transfer: 0 }
-            });
-
-            const [tor4youCustomers, setTor4youCustomers] = useState([]);
-            const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
-            const [isManualCustomer, setIsManualCustomer] = useState(true);
-
-            useEffect(() => {
-                const loadCustomers = async () => {
-                    setIsLoadingCustomers(true);
-                    setTor4youCustomers([]); 
-                    
-                    const customers = await fetchTor4YouAppointments(g.date);
-                    
-                    if (customers.length > 0) {
-                        setTor4youCustomers(customers);
-                        if(!g.customerName || !customers.includes(g.customerName)) {
-                             setG(prev => ({...prev, customerName: customers[0]}));
-                        }
-                        setIsManualCustomer(false);
-                    } else {
-                        setIsManualCustomer(true);
-                        if (tor4youCustomers.includes(g.customerName)) {
-                            setG(prev => ({...prev, customerName: ''}));
-                        }
-                    }
-                    setIsLoadingCustomers(false);
-                };
-
-                loadCustomers();
-            }, [g.date]);
-
-            const handleCustomerChange = (e) => {
-                const val = e.target.value;
-                if (val === 'MANUAL') {
-                    setIsManualCustomer(true);
-                    setG({...g, customerName: ''});
-                } else {
-                    setIsManualCustomer(false);
-                    setG({...g, customerName: val});
-                }
-            };
-
-            useEffect(() => {
-                if (g.hasVoucher) {
-                    setG(prev => ({...prev, kidsCount: 0, specialCount: 0}));
-                }
-            }, [g.hasVoucher]);
-
-            const calc = useMemo(() => {
-                const p = Number(g.totalPlayers) || 0;
-                const kids = Number(g.kidsCount) || 0;
-                const special = Number(g.specialCount) || 0;
-                
-                let base = settings.pricing?.p2 || 140;
-                if(p === 3) base = settings.pricing?.p3 || 125;
-                if(p === 4) base = settings.pricing?.p4 || 110;
-                if(p === 5) base = settings.pricing?.p5 || 100;
-                if(p >= 6 && p <= 8) base = settings.pricing?.p6to8 || 90;
-                if(p >= 9) base = settings.pricing?.p9to10 || 80;
-
-                let kidsDisc = 0; let specialDisc = 0;
-                if (!g.hasVoucher || Number(g.voucherPlayers) < p) {
-                    kidsDisc = kids * base * ((settings.discounts?.kids || 15) / 100);
-                    specialDisc = special * base * ((settings.discounts?.special || 10) / 100);
-                }
-
-                let finalP = (p * base) - kidsDisc - specialDisc;
-                let voucherWorth = 0;
-
-                if (g.hasVoucher && g.voucherPlayers > 0) {
-                    const vP = Math.min(Number(g.voucherPlayers), p);
-                    voucherWorth = Math.ceil((vP * base) * 0.78); 
-                    finalP = finalP - (vP * base); 
-                    if(finalP < 0) finalP = 0;
-                }
-
-                let weekendAdd = 0;
-                if (g.hasVoucher && g.isWeekend) {
-                    weekendAdd = Number(g.voucherPlayers) * 10;
-                    finalP += weekendAdd;
-                }
-
-                const sumPaid = Number(g.payments.cash) + Number(g.payments.credit) + Number(g.payments.bit) + Number(g.payments.transfer);
-                const diff = finalP - sumPaid;
-
-                return { base, finalP: finalP > 0 ? finalP : 0, discountAmount: kidsDisc + specialDisc, voucherWorth, weekendAdd, diff, sumPaid };
-            }, [g, settings]);
-
-            const submit = async (e) => {
-                e.preventDefault();
-                if (calc.diff !== 0) return alert("שים לב: סך התשלומים לא תואם לתשלום הסופי הנדרש.");
-
-                const activeEmployeeId = isAdmin ? g.employeeId : employee.id;
-                const activeEmployee = isAdmin ? employeesList.find(x => x.id === activeEmployeeId) : employee;
-                const wage = activeEmployee ? activeEmployee.wagePerGame : 0;
-
-                const payload = { 
-                    ...g, 
-                    employeeId: activeEmployeeId, 
-                    finalPrice: calc.finalP, 
-                    basePrice: calc.base, 
-                    discountAmount: calc.discountAmount,
-                    voucherWorth: calc.voucherWorth
-                };
-
-                await addDoc(getCollectionRef('groups'), payload);
-                
-                await addDoc(getCollectionRef('shifts'), { 
-                    employeeId: activeEmployeeId, 
-                    date: g.date, 
-                    startTime: g.time, 
-                    gamesCount: 1, 
-                    room: g.room, 
-                    status: 'pending',
-                    wagePerGameAtTime: wage 
-                });
-
-                alert('הקבוצה דווחה בהצלחה (ונרשמה משמרת לשכר)!');
-                if(onComplete) onComplete();
-                else setG({ ...g, customerName: '', hasVoucher: false, voucherPlayers: 0, voucherCode: '', payments: {cash:0, credit:0, bit:0, transfer:0}});
-            };
+        
+        const EmployeeHistory = ({ employee, groups, shifts }) => {
+            const month = new Date().toISOString().slice(0, 7);
+            const myGroups = groups.filter(g => g.employeeId === employee.id && g.date.startsWith(month)).sort((a,b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+            const myShifts = shifts.filter(s => s.employeeId === employee.id && s.date.startsWith(month) && !s.isAutoGroup).sort((a,b) => b.date.localeCompare(a.date));
 
             return (
-                <div className="grid md:grid-cols-2 gap-6">
-                    <Card title="דיווח קבוצה והכנסות">
-                        <form onSubmit={submit} className="space-y-4">
-                            {isAdmin && (
-                                <div><label className="block text-sm opacity-70 mb-1">עובד מדווח</label>
-                                <select className="w-full bg-gray-800 p-2 rounded text-white" value={g.employeeId} onChange={e=>setG({...g, employeeId:e.target.value})}>
-                                    <option value="admin">מנהל</option>
-                                    {employeesList.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
-                                </select></div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <Input label="תאריך" type="date" value={g.date} onChange={e=>setG({...g, date:e.target.value})} required />
-                                <Input label="שעה" type="time" step="900" value={g.time} onChange={e=>setG({...g, time:e.target.value})} required />
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm opacity-70 mb-1">חדר</label>
-                                <select className="w-full bg-gray-800 p-2 rounded text-white" value={g.room} onChange={e=>setG({...g, room:e.target.value})}>
-                                    {roomsArray.map(s=><option key={s} value={s}>{s}</option>)}
-                                </select></div>
-                                
-                                <div>
-                                    <label className="block text-sm opacity-70 mb-1 flex justify-between items-center">
-                                        <span>שם הלקוח</span>
-                                        {isLoadingCustomers && <Loader size={12} className="animate-spin text-indigo-400" />}
-                                    </label>
-                                    
-                                    {!isManualCustomer && tor4youCustomers.length > 0 ? (
-                                        <select 
-                                            className="w-full bg-gray-800 border border-indigo-500/50 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                                            value={g.customerName}
-                                            onChange={handleCustomerChange}
-                                            required
-                                        >
-                                            {tor4youCustomers.map((name, i) => (
-                                                <option key={i} value={name}>{name}</option>
-                                            ))}
-                                            <option value="MANUAL" className="text-indigo-400 font-bold">+ לקוח מזדמן / הקלדה ידנית</option>
-                                        </select>
-                                    ) : (
-                                        <div className="flex gap-2">
-                                            <input 
-                                                type="text" 
-                                                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                                value={g.customerName} 
-                                                onChange={e=>setG({...g, customerName:e.target.value})} 
-                                                required 
-                                                placeholder="הקלד שם לקוח..."
-                                            />
-                                            {tor4youCustomers.length > 0 && (
-                                                <Button type="button" variant="outline" size="sm" onClick={() => setIsManualCustomer(false)} title="חזור לרשימת יומן" className="px-2">
-                                                    <CalendarRange size={16} />
-                                                </Button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-4 border-t border-gray-700 pt-4">
-                                <Input label='סה"כ שחקנים' type="number" min="2" value={g.totalPlayers} onChange={e=>setG({...g, totalPlayers:e.target.value})} required />
-                                <Input label="ילדים (<12)" type="number" min="0" value={g.kidsCount} onChange={e=>setG({...g, kidsCount:e.target.value})} disabled={g.hasVoucher}/>
-                                <Input label="סטודנט/חייל/נכה" type="number" min="0" value={g.specialCount} onChange={e=>setG({...g, specialCount:e.target.value})} disabled={g.hasVoucher}/>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm opacity-70 mb-1">הרכב קבוצה</label>
-                                <select className="w-full bg-gray-800 p-2 rounded text-white" value={g.groupType} onChange={e=>setG({...g, groupType:e.target.value})}>
-                                    <option>משפחה</option><option>חברים</option><option>צוות עבודה</option><option>בני זוג</option><option>גיבוש קבוצה</option>
-                                </select></div>
-                                <div><label className="block text-sm opacity-70 mb-1">איך הגיעו אלינו?</label>
-                                <select className="w-full bg-gray-800 p-2 rounded text-white" value={g.referral} onChange={e=>setG({...g, referral:e.target.value})}>
-                                    <option>גוגל</option><option>פייסבוק</option><option>EAZY</option><option>מפה לאוזן</option><option>אינסטגרם</option><option>טיקטוק</option><option>שלט</option>
-                                </select></div>
-                            </div>
-
-                            <div className="border-t border-indigo-900/50 pt-4 mt-4 space-y-4">
-                                <div className="flex gap-2 items-center bg-gray-800 p-3 rounded cursor-pointer" onClick={()=>setG({...g, hasVoucher: !g.hasVoucher})}>
-                                    <input type="checkbox" checked={g.hasVoucher} readOnly className="w-5 h-5 accent-indigo-600"/>
-                                    <label className="font-bold cursor-pointer">תשלום באמצעות שובר מגה לאן?</label>
-                                </div>
-
-                                {g.hasVoucher && (
-                                    <div className="space-y-4 bg-indigo-900/20 p-4 rounded border border-indigo-800/50">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <Input label="מספר שחקנים בשובר" type="number" min="1" value={g.voucherPlayers} onChange={e=>setG({...g, voucherPlayers:e.target.value})} />
-                                            <Input label="קוד שובר (5-6 ספרות)" value={g.voucherCode} onChange={e=>setG({...g, voucherCode:e.target.value})} />
-                                        </div>
-                                        <div className="flex gap-2 items-center">
-                                            <input type="checkbox" checked={g.isWeekend} onChange={e=>setG({...g, isWeekend: e.target.checked})} className="w-4 h-4"/>
-                                            <label className="text-sm">האם מומש בסופ"ש / ערב חג? (תוספת 10₪ לשחקן שובר)</label>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="border-t border-gray-700 pt-4 space-y-4">
-                                <h4 className="font-bold opacity-80 mb-2">אמצעי תשלום לפירעון קופה (₪{calc.finalP})</h4>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <Input label="מזומן" type="number" value={g.payments.cash} onChange={e=>setG({...g, payments: {...g.payments, cash: e.target.value}})} />
-                                    <Input label="אשראי" type="number" value={g.payments.credit} onChange={e=>setG({...g, payments: {...g.payments, credit: e.target.value}})} />
-                                    <Input label="ביט" type="number" value={g.payments.bit} onChange={e=>setG({...g, payments: {...g.payments, bit: e.target.value}})} />
-                                    <Input label="העברה בנקאית" type="number" value={g.payments.transfer} onChange={e=>setG({...g, payments: {...g.payments, transfer: e.target.value}})} />
-                                </div>
-                                {calc.diff !== 0 && (
-                                    <div className={`p-2 text-center rounded text-sm font-bold ${calc.diff > 0 ? 'bg-red-900/50 text-red-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
-                                        {calc.diff > 0 ? `חסר ₪${calc.diff} להשלמת התשלום` : `הוזן ₪${Math.abs(calc.diff)} יותר מדי`}
-                                    </div>
-                                )}
-                            </div>
-
-                            <Button type="submit" className="w-full text-lg mt-4" disabled={calc.diff !== 0}><Save size={18}/> {isAdmin ? 'שמור למערכת' : 'שמור דיווח'}</Button>
-                        </form>
-                    </Card>
-
-                    <Card title="מחשבון קופה חכם">
-                        <div className="flex flex-col items-center py-6 space-y-6">
-                            <div className="w-full space-y-2 text-sm">
-                                <div className="flex justify-between border-b border-gray-800 pb-2">
-                                    <span>מחיר בסיס ({g.totalPlayers} שחקנים)</span><span>₪{calc.base} לאדם</span>
-                                </div>
-                                <div className="flex justify-between border-b border-gray-800 pb-2 font-bold">
-                                    <span>סה"כ תיאורטי מחירון</span><span>₪{calc.base * g.totalPlayers}</span>
-                                </div>
-                                {calc.discountAmount > 0 && (
-                                    <div className="flex justify-between border-b border-gray-800 pb-2 text-yellow-400">
-                                        <span>הנחות (ילדים/זכאים)</span><span>- ₪{calc.discountAmount}</span>
-                                    </div>
-                                )}
-                                {g.hasVoucher && g.voucherPlayers > 0 && (
-                                    <div className="flex justify-between border-b border-gray-800 pb-2 text-indigo-400">
-                                        <span>שובר מגה לאן ({g.voucherPlayers} אנשים)</span><span>- ₪{calc.base * Math.min(g.voucherPlayers, g.totalPlayers)}</span>
-                                    </div>
-                                )}
-                                {g.isWeekend && g.hasVoucher && (
-                                    <div className="flex justify-between border-b border-gray-800 pb-2 text-red-400">
-                                        <span>תוספת סופ"ש שובר</span><span>+ ₪{calc.weekendAdd}</span>
-                                    </div>
-                                )}
-                            </div>
-                            
-                            <div className="text-center w-full bg-gray-800 p-6 rounded-xl border border-gray-700">
-                                <div className="text-sm opacity-70 mb-1">לגבייה מהלקוח עכשיו</div>
-                                <div className="text-5xl font-bold text-green-400">₪{calc.finalP}</div>
-                            </div>
-
-                            <div className="flex justify-between w-full text-xs opacity-50 px-2">
-                                <span>* צפי החזר שובר (מעוגל כלפי מעלה): ₪{calc.voucherWorth}</span>
-                                {calc.sumPaid > 0 && <span>(הוזן עד כה: ₪{calc.sumPaid})</span>}
-                            </div>
+                <div className="space-y-6">
+                    <Card title={`קבוצות שדיווחתי (${month})`}>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right text-sm whitespace-nowrap">
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך ושעה</th><th>חדר</th><th>לקוח</th><th>שחקנים</th><th>לתשלום</th><th>נמחק?</th></tr></thead>
+                                <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
+                                    {myGroups.length === 0 && <tr><td colSpan="6" className="text-center py-4">לא דיווחת על קבוצות החודש</td></tr>}
+                                    {myGroups.map(g => (
+                                        <tr key={g.id}>
+                                            <td className="py-2">{formatDateIL(g.date)} {g.time}</td>
+                                            <td>{g.room}</td>
+                                            <td>{g.customerName}</td>
+                                            <td>{g.totalPlayers}</td>
+                                            <td className="text-green-400">₪{g.finalPriceToPay}</td>
+                                            <td><button onClick={() => confirm("למחוק דיווח?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-400"><Trash2 size={14}/></button></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </Card>
+                    {myShifts.length > 0 && (
+                        <Card title="דיווחים ידניים מהמערכת הישנה">
+                            <div className="overflow-x-auto text-sm opacity-70">
+                                <table className="w-full text-right">
+                                    <thead><tr><th>תאריך</th><th>שעה</th><th>חדר</th><th>משחקים</th></tr></thead>
+                                    <tbody>{myShifts.map(s => <tr key={s.id}><td>{formatDateIL(s.date)}</td><td>{s.startTime}</td><td>{s.room}</td><td>{s.gamesCount}</td></tr>)}</tbody>
+                                </table>
+                            </div>
+                        </Card>
+                    )}
                 </div>
-            );
-        };
+            )
+        }
 
         const EmployeeTasks = ({ employee, tasks }) => {
             const myTasks = tasks.filter(t => t.assigneeId === employee.id && t.status === 'pending');
-            
             const handleComplete = async (id) => {
                 await updateDoc(getDocRef('tasks', id), { status: 'completed', completedAt: new Date().toISOString() });
                 alert('כל הכבוד! המשימה הושלמה');
             };
-
             return (
                 <Card title="המשימות שלי">
                     {myTasks.length === 0 && <div className="text-center py-8 opacity-60">אין משימות פתוחות 🎉</div>}
@@ -1337,68 +1307,6 @@
                         ))}
                     </div>
                 </Card>
-            );
-        };
-
-        const EmployeeReport = ({ employee, shifts, settings }) => {
-            const roomsArray = settings.roomsList ? settings.roomsList.split(',').map(s=>s.trim()) : ['סודו של הודיני'];
-            const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-            const [start, setStart] = useState('');
-            const [games, setGames] = useState(1);
-            const [room, setRoom] = useState(roomsArray[0]);
-            
-            const submit = async (e) => {
-                e.preventDefault();
-                const today = new Date();
-                const selDate = new Date(date);
-                if (selDate.getMonth() < today.getMonth() && today.getDate() > 3) return alert("לא ניתן לדווח על חודש שעבר אחרי ה-3 לחודש");
-                await addDoc(getCollectionRef('shifts'), { employeeId: employee.id, date, startTime: start, gamesCount: Number(games), room, status: 'pending', wagePerGameAtTime: employee.wagePerGame }); 
-                alert('המשמרת נשלחה לאישור המנהל'); setStart(''); setGames(1);
-            };
-            
-            const del = async (id) => { if(confirm("למחוק משמרת זו?")) await deleteDoc(getDocRef('shifts', id)); };
-            const myShifts = shifts.filter(s => s.employeeId === employee.id).sort((a,b) => b.date.localeCompare(a.date));
-
-            return (
-                <div className="grid md:grid-cols-2 gap-6">
-                    <Card title="דיווח משמרת ידני (ללא קבוצה)">
-                        <div className="mb-4 text-xs text-yellow-400 bg-yellow-900/30 p-2 rounded">
-                            שים לב: מומלץ להשתמש במסך "דיווח קבוצה" שמדווח גם למנהל וגם לשכר. דיווח זה נועד רק לתורנויות או מקרים חריגים.
-                        </div>
-                        <form onSubmit={submit} className="space-y-4">
-                            <Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required />
-                            <Input label="שעה" type="time" value={start} onChange={e=>setStart(e.target.value)} required />
-                            <label className="block text-sm opacity-70 text-dynamic">חדר</label>
-                            <select className="w-full bg-gray-800 p-2 rounded text-white" value={room} onChange={e=>setRoom(e.target.value)}>
-                                {roomsArray.map(s=><option key={s} value={s}>{s}</option>)}
-                                <option value="אחר">אחר (תחזוקה וכדומה)</option>
-                            </select>
-                            <Input label="שווה ערך למשחקים (לשכר)" type="number" value={games} onChange={e=>setGames(e.target.value)} required />
-                            <Button type="submit" className="w-full">שלח לאישור</Button>
-                        </form>
-                    </Card>
-                    <Card title="היסטוריה (כל הדיווחים לשכר)">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-right text-sm">
-                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך</th><th>טווח שעות</th><th>חדר</th><th>כמות קבוצות</th><th>סטטוס</th><th>מחק</th></tr></thead>
-                                <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
-                                    {myShifts.map(s => {
-                                        const endTime = addTime(s.startTime, s.gamesCount * 90);
-                                        return (
-                                        <tr key={s.id}>
-                                            <td className="py-2">{formatDateIL(s.date)}</td>
-                                            <td>{s.startTime} - {endTime}</td>
-                                            <td>{s.room}</td>
-                                            <td>{s.gamesCount}</td>
-                                            <td><StatusBadge status={s.status || (s.approved ? 'approved' : 'pending')} /></td>
-                                            <td><button onClick={() => del(s.id)} className="text-red-400"><Trash2 size={14}/></button></td>
-                                        </tr>
-                                    )})}
-                                </tbody>
-                            </table>
-                        </div>
-                    </Card>
-                </div>
             );
         };
 
@@ -1466,7 +1374,7 @@
                     <Card title="האילוצים שלי">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
-                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך התחלה</th><th>תאריך סיום</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>התחלה</th><th>סיום</th><th>שעות</th><th>מהות</th><th>סטטוס</th><th>פעולות</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
                                     {myCons.map(c => (
                                         <tr key={c.id}>
@@ -1494,7 +1402,9 @@
             const [sending, setSending] = useState(false);
             const month = new Date().toISOString().slice(0, 7);
             const myShifts = shifts.filter(s => s.employeeId === employee.id && s.date.startsWith(month));
-            const wage = myShifts.reduce((acc, curr) => acc + (curr.gamesCount * employee.wagePerGame), 0);
+            
+            // Calculate wage based on frozen wage at time of shift, or fallback to current if missing
+            const wage = myShifts.reduce((acc, curr) => acc + (curr.gamesCount * (curr.wageAtTime || employee.wagePerGame)), 0);
 
             const request = async (e) => {
                 e.preventDefault();
@@ -1518,7 +1428,7 @@
                     <Card>
                         <div className="text-center">
                             <h2 className="text-2xl font-bold text-dynamic">{employee.name}</h2>
-                            <p className="text-indigo-400">{employee.skills.join(' • ')}</p>
+                            <p className="text-indigo-400">{employee.skills?.join(' • ')}</p>
                         </div>
                         <div className="mt-4 space-y-2 text-sm text-dynamic opacity-80">
                             <div>טלפון: {employee.phone}</div>
@@ -1530,12 +1440,12 @@
                     <Card title={`שכר משוער (${month})`}>
                         <div className="text-center py-8">
                             <div className="text-4xl font-bold text-green-400">₪{wage}</div>
-                            <div className="text-gray-400 text-sm">{myShifts.length} משמרות</div>
+                            <div className="text-gray-400 text-sm">{myShifts.length} משחקים / משמרות</div>
                         </div>
                     </Card>
                     {open && (
                         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-md">
+                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700">
                                 <h3 className="text-xl font-bold mb-4">עדכון פרטים</h3>
                                 <form onSubmit={request} className="space-y-4">
                                     <Input label="טלפון" name="phone" defaultValue={employee.phone} required />
@@ -1556,6 +1466,3 @@
     </script>
 </body>
 </html>
-```
-
-שתהיה מוכן, תעתיק את הקוד, ותודיע לי אם הכל עובד טוב ידנית כרגע!
