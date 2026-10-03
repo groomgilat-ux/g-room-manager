@@ -348,7 +348,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.5 - עיצוב סופי וחיבור תורים</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.6 - דיבאג אוטומטי וממשק מוקפד</div>
                     </div>
                 </div>
             );
@@ -372,11 +372,12 @@
                             <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.5</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.6</footer>
                 </div>
             );
         }
 
+        // --- Shared Component: Group Report Form (SPLIT LAYOUT - REORDERED) ---
         const GroupReportForm = ({ employeeId, settings, onSave, isAdmin, employees }) => {
             const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
             const [time, setTime] = useState('10:00');
@@ -400,6 +401,7 @@
             const [fetchedCustomers, setFetchedCustomers] = useState([]);
             const [isManualCustomer, setIsManualCustomer] = useState(true);
             const [loadingCustomers, setLoadingCustomers] = useState(false);
+            const [tor4youError, setTor4youError] = useState(null); 
 
             const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
             
@@ -410,6 +412,7 @@
             useEffect(() => {
                 const fetchAppts = async () => {
                     setLoadingCustomers(true);
+                    setTor4youError(null);
                     try {
                         const res = await fetch(`${TOR4YOU_FUNCTION_URL}?date=${date}`);
                         if(res.ok) {
@@ -422,13 +425,18 @@
                                 setFetchedCustomers([]);
                                 setIsManualCustomer(true);
                                 setCustomerName('');
+                                // אם אין לקוחות ויש מידע מהשרת - נציג אותו כדי להבין למה
+                                if (data.debugInfo) {
+                                    setTor4youError(JSON.stringify(data.debugInfo, null, 2));
+                                }
                             }
                         } else {
-                            throw new Error("Failed");
+                            throw new Error("Failed to fetch API");
                         }
                     } catch (e) {
                         setFetchedCustomers([]);
                         setIsManualCustomer(true);
+                        setTor4youError(e.message);
                     } finally {
                         setLoadingCustomers(false);
                     }
@@ -436,6 +444,7 @@
                 fetchAppts();
             }, [date]);
 
+            // תמחור - עכשיו כולם בטוח מספרים ולא שגיאות מחרוזת
             const basePricePerPlayer = getBasePrice(totalPlayers, settings.pricing);
             const totalOriginalPrice = basePricePerPlayer * Number(totalPlayers);
             
@@ -518,6 +527,14 @@
                 <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-8">
                     {/* צד ימין - הזנת נתונים מסודרת */}
                     <div className="flex-1 space-y-6">
+
+                        {/* קוביית דיבאג במקרה של שגיאה או רשימה ריקה */}
+                        {tor4youError && (
+                            <div className="bg-red-900/50 p-4 rounded-lg border border-red-500 text-sm">
+                                <h4 className="font-bold text-red-300">מידע מהשרת של Tor4You (שלח לי צילום של זה):</h4>
+                                <pre className="text-white mt-2 whitespace-pre-wrap">{tor4youError}</pre>
+                            </div>
+                        )}
                         
                         {/* 1. מפעיל */}
                         {isAdmin && (
@@ -577,7 +594,7 @@
                             </div>
                         </div>
 
-                        {/* 3. הנחות (הוקפץ למעלה) */}
+                        {/* 3. הנחות (הוקפץ למעלה לפי הבקשה) */}
                         <div className={`grid md:grid-cols-2 gap-4 border-t border-gray-800 pt-4 ${hasMegaLaan ? 'opacity-30 pointer-events-none' : ''}`}>
                             <Input label="ילדים (עד גיל 12)" type="number" min="0" value={kids} onChange={e=>setKids(e.target.value)} disabled={hasMegaLaan} />
                             <Input label="סטודנט/חייל/נכה" type="number" min="0" value={eligible} onChange={e=>setEligible(e.target.value)} disabled={hasMegaLaan} />
