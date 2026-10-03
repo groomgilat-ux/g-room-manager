@@ -348,7 +348,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.6 - דיבאג אוטומטי וממשק מוקפד</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.7 - משיכת שעות, אייקונים והסתרת שדות חכמה</div>
                     </div>
                 </div>
             );
@@ -372,7 +372,7 @@
                             <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.6</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.7</footer>
                 </div>
             );
         }
@@ -398,7 +398,7 @@
             
             const [saving, setSaving] = useState(false);
             const [reportEmpId, setReportEmpId] = useState(employeeId);
-            const [fetchedCustomers, setFetchedCustomers] = useState([]);
+            const [fetchedCustomers, setFetchedCustomers] = useState([]); // עכשיו זה מערך של אובייקטים {name, time}
             const [isManualCustomer, setIsManualCustomer] = useState(true);
             const [loadingCustomers, setLoadingCustomers] = useState(false);
             const [tor4youError, setTor4youError] = useState(null); 
@@ -418,14 +418,14 @@
                         if(res.ok) {
                             const data = await res.json();
                             if(data.customers && data.customers.length > 0) {
-                                setFetchedCustomers(data.customers);
+                                setFetchedCustomers(data.customers); // שומר את המערך עם השמות והשעות
                                 setIsManualCustomer(false);
-                                setCustomerName(data.customers[0]);
+                                setCustomerName(data.customers[0].name);
+                                setTime(data.customers[0].time); // שאיבת שעה אוטומטית ללקוח הראשון
                             } else {
                                 setFetchedCustomers([]);
                                 setIsManualCustomer(true);
                                 setCustomerName('');
-                                // אם אין לקוחות ויש מידע מהשרת - נציג אותו כדי להבין למה
                                 if (data.debugInfo) {
                                     setTor4youError(JSON.stringify(data.debugInfo, null, 2));
                                 }
@@ -444,7 +444,19 @@
                 fetchAppts();
             }, [date]);
 
-            // תמחור - עכשיו כולם בטוח מספרים ולא שגיאות מחרוזת
+            // פונקציה לטיפול בשינוי לקוח מהרשימה הנפתחת (שאיבת השעה)
+            const handleCustomerChange = (e) => {
+                const val = e.target.value;
+                setCustomerName(val);
+                if (val !== 'manual_entry') {
+                    // חיפוש הלקוח הנבחר מתוך המערך שלנו כדי לשלוף את השעה שלו
+                    const selectedCust = fetchedCustomers.find(c => c.name === val);
+                    if (selectedCust && selectedCust.time) {
+                        setTime(selectedCust.time); // מעדכן אוטומטית! המפעיל יכול לשנות אח"כ ידנית
+                    }
+                }
+            };
+
             const basePricePerPlayer = getBasePrice(totalPlayers, settings.pricing);
             const totalOriginalPrice = basePricePerPlayer * Number(totalPlayers);
             
@@ -528,10 +540,9 @@
                     {/* צד ימין - הזנת נתונים מסודרת */}
                     <div className="flex-1 space-y-6">
 
-                        {/* קוביית דיבאג במקרה של שגיאה או רשימה ריקה */}
                         {tor4youError && (
                             <div className="bg-red-900/50 p-4 rounded-lg border border-red-500 text-sm">
-                                <h4 className="font-bold text-red-300">מידע מהשרת של Tor4You (שלח לי צילום של זה):</h4>
+                                <h4 className="font-bold text-red-300">מידע מהשרת של Tor4You:</h4>
                                 <pre className="text-white mt-2 whitespace-pre-wrap">{tor4youError}</pre>
                             </div>
                         )}
@@ -557,17 +568,11 @@
                                 </select>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <label className="text-sm opacity-70 font-medium text-dynamic">חדר</label>
-                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>
-                                    {roomList.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                            </div>
-                            <div className="flex flex-col gap-1">
                                 <label className="text-sm opacity-70 font-medium text-dynamic flex items-center gap-1">שם לקוח {loadingCustomers && <Loader className="animate-spin w-3 h-3 text-indigo-400"/>}</label>
                                 {!isManualCustomer && fetchedCustomers.length > 0 ? (
                                     <div className="space-y-2">
-                                        <select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={customerName} onChange={e=>setCustomerName(e.target.value)} required>
-                                            {fetchedCustomers.map(c => <option key={c} value={c}>{c}</option>)}
+                                        <select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={customerName} onChange={handleCustomerChange} required>
+                                            {fetchedCustomers.map(c => <option key={c.name} value={c.name}>{c.name} ({c.time})</option>)}
                                             <option value="manual_entry">-- לקוח מזדמן / הזנה ידנית --</option>
                                         </select>
                                         {customerName === 'manual_entry' && <input id="manualCustomerNameInput" type="text" placeholder="הקלד שם לקוח" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" required/>}
@@ -575,6 +580,12 @@
                                 ) : (
                                     <input type="text" value={customerName} onChange={e=>setCustomerName(e.target.value)} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" placeholder="הזן שם לקוח" required />
                                 )}
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm opacity-70 font-medium text-dynamic">חדר</label>
+                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>
+                                    {roomList.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
                             </div>
                         </div>
 
@@ -594,13 +605,15 @@
                             </div>
                         </div>
 
-                        {/* 3. הנחות (הוקפץ למעלה לפי הבקשה) */}
-                        <div className={`grid md:grid-cols-2 gap-4 border-t border-gray-800 pt-4 ${hasMegaLaan ? 'opacity-30 pointer-events-none' : ''}`}>
-                            <Input label="ילדים (עד גיל 12)" type="number" min="0" value={kids} onChange={e=>setKids(e.target.value)} disabled={hasMegaLaan} />
-                            <Input label="סטודנט/חייל/נכה" type="number" min="0" value={eligible} onChange={e=>setEligible(e.target.value)} disabled={hasMegaLaan} />
-                        </div>
+                        {/* 3. הנחות - יוסתר לחלוטין אם יש שובר מגה לאן */}
+                        {!hasMegaLaan && (
+                            <div className="grid md:grid-cols-2 gap-4 border-t border-gray-800 pt-4 fade-in">
+                                <Input label="ילדים (עד גיל 12)" type="number" min="0" value={kids} onChange={e=>setKids(e.target.value)} />
+                                <Input label="סטודנט/חייל/נכה" type="number" min="0" value={eligible} onChange={e=>setEligible(e.target.value)} />
+                            </div>
+                        )}
 
-                        {/* 4. מגה לאן (ליד אמצעי התשלום) */}
+                        {/* 4. מגה לאן */}
                         <div className="bg-blue-900/20 p-4 rounded-lg border border-blue-800/50 mt-6">
                             <label className="flex items-center gap-2 cursor-pointer font-bold text-blue-300">
                                 <input type="checkbox" checked={hasMegaLaan} onChange={e=>{setHasMegaLaan(e.target.checked); if(e.target.checked){setKids(0);setEligible(0);}}} className="w-5 h-5"/>
@@ -618,14 +631,14 @@
                             )}
                         </div>
 
-                        {/* 5. אמצעי תשלום */}
+                        {/* 5. אמצעי תשלום - עם אייקונים */}
                         <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 mt-6">
                             <h4 className="font-bold mb-4 flex items-center gap-2 text-indigo-300"><DollarSign size={18}/> אמצעי תשלום</h4>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <Input label="מזומן (₪)" type="number" value={payments.cash} onChange={e=>setPayments({...payments, cash: e.target.value})} />
-                                <Input label="אשראי (₪)" type="number" value={payments.credit} onChange={e=>setPayments({...payments, credit: e.target.value})} />
-                                <Input label="ביט (₪)" type="number" value={payments.bit} onChange={e=>setPayments({...payments, bit: e.target.value})} />
-                                <Input label="העברה (₪)" type="number" value={payments.transfer} onChange={e=>setPayments({...payments, transfer: e.target.value})} />
+                                <Input label="💵 מזומן (₪)" type="number" value={payments.cash} onChange={e=>setPayments({...payments, cash: e.target.value})} />
+                                <Input label="💳 אשראי (₪)" type="number" value={payments.credit} onChange={e=>setPayments({...payments, credit: e.target.value})} />
+                                <Input label="📱 ביט (₪)" type="number" value={payments.bit} onChange={e=>setPayments({...payments, bit: e.target.value})} />
+                                <Input label="🏦 העברה (₪)" type="number" value={payments.transfer} onChange={e=>setPayments({...payments, transfer: e.target.value})} />
                             </div>
                         </div>
 
