@@ -89,8 +89,8 @@
         const auth = getAuth(app);
         const db = getFirestore(app, 'groom');
         
-        // YOUR FIREBASE CLOUD FUNCTION URL (DEBUG MODE ENABLED)
-        const TOR4YOU_FUNCTION_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouAppts?debug=true";
+        // YOUR FIREBASE CLOUD FUNCTION URL (Clean API call)
+        const TOR4YOU_FUNCTION_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouAppts";
 
         const getCollectionRef = (name) => collection(db, name);
         const getDocRef = (name, id) => doc(db, name, id);
@@ -238,13 +238,6 @@
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
-        const replacePlaceholders = (template, data) => {
-            if (!template) return '';
-            let result = template;
-            Object.keys(data).forEach(key => result = result.replace(new RegExp(`{${key}}`, 'g'), data[key]));
-            return result;
-        };
-
         const timeoutPromise = (promise, ms = 5000) => Promise.race([promise, new Promise((_, r) => setTimeout(() => r(new Error("Timeout")), ms))]);
 
         // --- UI Components ---
@@ -353,9 +346,8 @@
                             </select>
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
-                            {!dbConn && <p className="text-red-400 text-xs">שגיאת חיבור לענן. בדוק הרשאות.</p>}
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.2 - עיצוב מפוצל</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.3 - עיצוב מפוצל וחיבור תורים</div>
                     </div>
                 </div>
             );
@@ -379,7 +371,7 @@
                             <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.2</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.3</footer>
                 </div>
             );
         }
@@ -408,7 +400,6 @@
             const [fetchedCustomers, setFetchedCustomers] = useState([]);
             const [isManualCustomer, setIsManualCustomer] = useState(true);
             const [loadingCustomers, setLoadingCustomers] = useState(false);
-            const [tor4youError, setTor4youError] = useState(null); 
 
             const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
             
@@ -419,17 +410,11 @@
             useEffect(() => {
                 const fetchAppts = async () => {
                     setLoadingCustomers(true);
-                    setTor4youError(null);
                     try {
-                        const res = await fetch(`${TOR4YOU_FUNCTION_URL}&date=${date}`);
+                        const res = await fetch(`${TOR4YOU_FUNCTION_URL}?date=${date}`);
                         if(res.ok) {
                             const data = await res.json();
-                            if (data.Tor4You_Raw_Response) {
-                                setTor4youError(JSON.stringify(data.Tor4You_Raw_Response, null, 2));
-                                setFetchedCustomers([]);
-                                setIsManualCustomer(true);
-                                setCustomerName('');
-                            } else if(data.customers && data.customers.length > 0) {
+                            if(data.customers && data.customers.length > 0) {
                                 setFetchedCustomers(data.customers);
                                 setIsManualCustomer(false);
                                 setCustomerName(data.customers[0]);
@@ -437,9 +422,6 @@
                                 setFetchedCustomers([]);
                                 setIsManualCustomer(true);
                                 setCustomerName('');
-                                if (data.Tor4YouMessage) {
-                                     setTor4youError(JSON.stringify(data.Tor4YouMessage, null, 2));
-                                }
                             }
                         } else {
                             throw new Error("Failed");
@@ -536,13 +518,6 @@
                 <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-8">
                     {/* צד ימין - הזנת נתונים */}
                     <div className="flex-1 space-y-6">
-                        {tor4youError && (
-                            <div className="bg-red-900/50 p-4 rounded-lg border border-red-500 text-sm">
-                                <h4 className="font-bold text-red-300">מידע דיבאג מ-Tor4You (העתק ושלח לי):</h4>
-                                <pre className="text-white mt-2 whitespace-pre-wrap">{tor4youError}</pre>
-                            </div>
-                        )}
-                        
                         <div className="grid md:grid-cols-2 gap-4">
                             <Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required />
                             <div className="flex flex-col gap-1">
