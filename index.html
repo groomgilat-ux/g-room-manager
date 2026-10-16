@@ -89,8 +89,9 @@
         const auth = getAuth(app);
         const db = getFirestore(app, 'groom');
         
-        // YOUR FIREBASE CLOUD FUNCTION URL
+        // --- Endpoints ---
         const TOR4YOU_FUNCTION_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouAppts";
+        const TOR4YOU_MANAGE_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/manageTor4YouSlots";
 
         const getCollectionRef = (name) => collection(db, name);
         const getDocRef = (name, id) => doc(db, name, id);
@@ -383,7 +384,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 6.2 - תיקון מסך מנהל והגנות קריסה</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 6.3 - ניהול יומן תורים חכם</div>
                     </div>
                 </div>
             );
@@ -407,7 +408,7 @@
                             <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v6.2</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v6.3</footer>
                 </div>
             );
         }
@@ -620,7 +621,6 @@
                                     <div className="space-y-2">
                                         <select className={getFieldClass(customerName)} value={customerName} onChange={handleCustomerChange}>
                                             <option value="" disabled>-- בחירת לקוח --</option>
-                                            {/* מציג רק שם (שעה) */}
                                             {fetchedCustomers.map(c => <option key={c.name} value={c.name}>{c.name} ({c.time})</option>)}
                                             <option value="manual_entry">-- לקוח מזדמן / הזנה ידנית --</option>
                                         </select>
@@ -784,36 +784,6 @@
                             {balance !== 0 && <div className="text-red-400 text-sm font-bold text-center mt-3 bg-red-900/20 p-2 rounded">יתרת פער: ₪{balance} (חובה לאפס)</div>}
                             <Button onClick={handleSave} className="w-full mt-4" disabled={saving || balance !== 0}>{saving ? 'מעדכן...' : 'שמור שינויים בחלוקת התשלום'}</Button>
                         </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const AdminDashboard = ({ data, settings }) => {
-            const [tab, setTab] = useState('groups');
-            const pendingReq = data.requests.filter(r => r.status === 'pending');
-            const pendingCons = data.constraints.filter(c => c.status === 'pending');
-            const pendingShifts = data.shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
-            
-            return (
-                <div className="space-y-6">
-                    <div className="flex flex-wrap gap-2 border-b border-dynamic pb-2">
-                        {[{id:'groups', l:'הכנסות וקבוצות', i:Coins}, {id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות שכר', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'tasks', l:'משימות', i:CheckSquare}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
-                            <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}><m.i size={18} className="icon-dynamic"/> {m.l} 
-                            {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
-                            {m.id === 'shifts' && pendingShifts.length > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingShifts.length}</span>}
-                            </button>
-                        )}
-                        {pendingReq.length > 0 && <button onClick={()=>setTab('requests')} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg ml-auto transition-colors ${tab==='requests'?'bg-indigo-600/10 border-b-2 border-indigo-500':'text-yellow-400'}`}><Bell size={18} className="animate-bounce"/><span className="font-bold">{pendingReq.length}</span></button>}
-                    </div>
-                    <div className="fade-in">
-                        {tab==='groups' && <AdminGroups groups={data.groups} employees={data.employees} settings={settings} shifts={data.shifts} />}
-                        {tab==='employees' && <AdminEmployees employees={data.employees}/>}
-                        {tab==='shifts' && <AdminReports employees={data.employees} shifts={data.shifts} settings={settings}/>}
-                        {tab==='constraints' && <AdminConstraints employees={data.employees} constraints={data.constraints} settings={settings}/>}
-                        {tab==='tasks' && <AdminTasks employees={data.employees} tasks={data.tasks}/>}
-                        {tab==='settings' && <AdminSettings settings={settings}/>}
-                        {tab==='requests' && <AdminRequests requests={pendingReq} employees={data.employees}/>}
                     </div>
                 </div>
             );
@@ -1106,12 +1076,13 @@
 
         const AdminConstraints = ({ employees, constraints, settings }) => {
             const [offset, setOffset] = useState(0);
+            const [isBlocking, setIsBlocking] = useState(false); // סטטוס חסימה ברקע
             const days = useMemo(() => Array.from({length:7}, (_,i) => {
                 const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d;
             }), [offset]);
             const hours = Array.from({length:17}, (_,i) => i+8);
 
-            const getStatus = (d, h) => {
+            const getStatus = (d, h, customConstraints = constraints) => {
                 const dStr = d.toISOString().slice(0,10);
                 const dayName = d.toLocaleDateString('en-US', {weekday:'long'});
                 const biz = settings.openingHours[dayName];
@@ -1124,7 +1095,7 @@
 
                 let count = 0;
                 employees.forEach(emp => {
-                    const busy = constraints.some(c => {
+                    const busy = customConstraints.some(c => {
                         if (c.employeeId !== emp.id || c.status === 'rejected') return false; 
                         if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
                         const cs = parseInt(c.startTime.split(':')[0]);
@@ -1137,7 +1108,49 @@
             };
             
             const handleStatus = async (id, status) => {
+                const c = constraints.find(x => x.id === id);
                 await updateDoc(getDocRef('constraints', id), { status });
+
+                // מנהל המשמרת הווירטואלי: בדיקת עובדים וחסימת יומן
+                if (status === 'approved' && c.type === 'single') {
+                    // מדמה את מערך האילוצים המעודכן כדי לבדוק כמה פנויים נשארו
+                    const updatedConstraints = constraints.map(x => x.id === id ? { ...x, status: 'approved' } : x);
+                    
+                    const sHour = parseInt(c.startTime.split(':')[0]);
+                    const eHour = parseInt(c.endTime.split(':')[0]);
+                    const checkDate = new Date(c.date);
+                    
+                    let hasZero = false;
+                    for (let h = sHour; h < eHour; h++) {
+                        if (getStatus(checkDate, h, updatedConstraints) === 0) hasZero = true;
+                    }
+
+                    if (hasZero) {
+                        if (confirm(`⚠️ שימו לב! אישור אילוץ זה משאיר אתכם עם 0 עובדים זמינים בטווח השעות ${c.startTime}-${c.endTime}.\n\nהאם תרצה שהמערכת תבדוק ותנעל אוטומטית משבצות ריקות באתר כדי שלקוחות חדשים לא יוכלו להזמין?`)) {
+                            setIsBlocking(true);
+                            try {
+                                const res = await fetch(TOR4YOU_MANAGE_URL, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ date: c.date, startTime: c.startTime, endTime: c.endTime })
+                                });
+                                const data = await res.json();
+                                
+                                if (data.hasBookings) {
+                                    alert(`🚨 ${data.message}`);
+                                } else if (data.success) {
+                                    alert(`✅ ${data.message}`);
+                                } else {
+                                    alert(`❌ שגיאה מהשרת: ${data.error}`);
+                                }
+                            } catch (e) {
+                                alert('שגיאת תקשורת עם שרת האוטומציה: ' + e.message);
+                            } finally {
+                                setIsBlocking(false);
+                            }
+                        }
+                    }
+                }
             };
 
             const dayTitle = (d) => d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'});
@@ -1151,7 +1164,17 @@
             }, [constraints]);
 
             return (
-                <div className="space-y-6">
+                <div className="space-y-6 relative">
+                    {/* חיווי טעינה בזמן שהאוטומציה סורקת את Tor4You */}
+                    {isBlocking && (
+                        <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center rounded-xl backdrop-blur-sm">
+                            <div className="bg-gray-900 p-6 rounded-xl border border-indigo-500 shadow-2xl flex flex-col items-center gap-4">
+                                <Loader className="animate-spin w-10 h-10 text-indigo-500" />
+                                <span className="text-lg font-bold text-white">סורק ומעדכן את יומן Tor4You...</span>
+                            </div>
+                        </div>
+                    )}
+                    
                     <Card title="רשימת אילוצים">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
