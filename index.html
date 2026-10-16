@@ -270,7 +270,7 @@
         const Input = ({ label, type = "text", value, onChange, className = "", ...props }) => (
             <div className={`flex flex-col gap-1 ${className}`}>
                 {label && <label className="text-sm opacity-70 font-medium text-dynamic">{label}</label>}
-                <input type={type} value={value} onChange={onChange} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" {...props} />
+                <input type={type} value={value} onChange={onChange} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors" {...props} />
             </div>
         );
 
@@ -355,7 +355,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 5.9 - תיקון כפתור המייל נגד חוסמי חלונות</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 6.0 - מערכת ניהול ERP מתקדמת</div>
                     </div>
                 </div>
             );
@@ -379,20 +379,22 @@
                             <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v5.9</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v6.0</footer>
                 </div>
             );
         }
 
-        // --- Shared Component: Group Report Form (SPLIT LAYOUT - REORDERED) ---
+        // --- Shared Component: Group Report Form (UX Updates for Employees) ---
         const GroupReportForm = ({ employeeId, settings, onSave, isAdmin, employees }) => {
             const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
             const [time, setTime] = useState('10:00');
             const [room, setRoom] = useState('');
             const [customerName, setCustomerName] = useState('');
             const [totalPlayers, setTotalPlayers] = useState(2);
-            const [groupType, setGroupType] = useState('משפחה');
-            const [source, setSource] = useState('גוגל');
+            // סעיף 5 - מתחיל כריק כברירת מחדל כדי לחייב בחירה
+            const [groupType, setGroupType] = useState('');
+            const [source, setSource] = useState('');
+            
             const [kids, setKids] = useState(0);
             const [eligible, setEligible] = useState(0); 
             
@@ -404,8 +406,9 @@
             const [payments, setPayments] = useState({ cash: '', credit: '', bit: '', transfer: '' });
             
             const [saving, setSaving] = useState(false);
+            const [attemptedSubmit, setAttemptedSubmit] = useState(false); // סעיף 6: זיהוי ניסיון שמירה חסר
             const [reportEmpId, setReportEmpId] = useState(employeeId);
-            const [fetchedCustomers, setFetchedCustomers] = useState([]); // עכשיו זה מערך של אובייקטים {name, time}
+            const [fetchedCustomers, setFetchedCustomers] = useState([]);
             const [isManualCustomer, setIsManualCustomer] = useState(true);
             const [loadingCustomers, setLoadingCustomers] = useState(false);
             const [tor4youError, setTor4youError] = useState(null); 
@@ -425,41 +428,36 @@
                         if(res.ok) {
                             const data = await res.json();
                             if(data.customers && data.customers.length > 0) {
-                                setFetchedCustomers(data.customers); // שומר את המערך עם השמות והשעות
+                                setFetchedCustomers(data.customers); 
                                 setIsManualCustomer(false);
                                 setCustomerName(data.customers[0].name);
-                                setTime(data.customers[0].time); // שאיבת שעה אוטומטית ללקוח הראשון
+                                setTime(data.customers[0].time); 
+                                setTotalPlayers(data.customers[0].players || 2); // סעיף 7: שאיבת כמות אוטומטית
                             } else {
                                 setFetchedCustomers([]);
                                 setIsManualCustomer(true);
                                 setCustomerName('');
-                                if (data.debugInfo) {
-                                    setTor4youError(JSON.stringify(data.debugInfo, null, 2));
-                                }
+                                if (data.debugInfo) setTor4youError(JSON.stringify(data.debugInfo, null, 2));
                             }
-                        } else {
-                            throw new Error("Failed to fetch API");
-                        }
+                        } else { throw new Error("Failed to fetch API"); }
                     } catch (e) {
                         setFetchedCustomers([]);
                         setIsManualCustomer(true);
                         setTor4youError(e.message);
-                    } finally {
-                        setLoadingCustomers(false);
-                    }
+                    } finally { setLoadingCustomers(false); }
                 };
                 fetchAppts();
             }, [date]);
 
-            // פונקציה לטיפול בשינוי לקוח מהרשימה הנפתחת (שאיבת השעה)
+            // סעיף 7: מתעדכן לפי לקוח ספציפי שנבחר מהרשימה
             const handleCustomerChange = (e) => {
                 const val = e.target.value;
                 setCustomerName(val);
                 if (val !== 'manual_entry') {
-                    // חיפוש הלקוח הנבחר מתוך המערך שלנו כדי לשלוף את השעה שלו
                     const selectedCust = fetchedCustomers.find(c => c.name === val);
-                    if (selectedCust && selectedCust.time) {
-                        setTime(selectedCust.time); // מעדכן אוטומטית! המפעיל יכול לשנות אח"כ ידנית
+                    if (selectedCust) {
+                        if(selectedCust.time) setTime(selectedCust.time);
+                        if(selectedCust.players) setTotalPlayers(selectedCust.players);
                     }
                 }
             };
@@ -496,16 +494,23 @@
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                if (paymentBalance !== 0) {
-                    alert(`יש פער בתשלום! הלקוח צריך לשלם ${finalPriceToPay} אך הוזן ${totalEnteredPayment}`);
-                    return;
-                }
-                
+                setAttemptedSubmit(true); // תחילת בדיקת ולידציה (סעיף 6)
+
                 let actualCustName = customerName;
                 if(!isManualCustomer && customerName === 'manual_entry') {
                     actualCustName = document.getElementById('manualCustomerNameInput')?.value;
                 }
-                if(!actualCustName) return alert('נא להזין שם לקוח');
+
+                // סעיף 5+6: חסימת שמירה והצגת התרעה אם חסר מידע
+                if (!actualCustName || !groupType || !source || !date || !time) {
+                    alert('⚠️ אנא השלם את כל שדות החובה המסומנים באדום (מקור הגעה, סוג קבוצה וכו\').');
+                    return;
+                }
+
+                if (paymentBalance !== 0) {
+                    alert(`יש פער בתשלום! הלקוח צריך לשלם ${finalPriceToPay} אך הוזן ${totalEnteredPayment}`);
+                    return;
+                }
 
                 setSaving(true);
                 const groupData = {
@@ -542,11 +547,19 @@
                 } finally { setSaving(false); }
             };
 
+            // סעיף 6: סגנון לשדה חסר
+            const getFieldClass = (fieldValue) => {
+                return `w-full rounded-lg px-3 py-2 text-white outline-none transition-colors ${attemptedSubmit && !fieldValue ? 'bg-red-900/40 border border-red-500 ring-2 ring-red-500' : 'bg-gray-800 border border-gray-700 focus:ring-2 focus:ring-indigo-500'}`;
+            };
+            const getLabelClass = (fieldValue) => {
+                return `text-sm font-medium flex items-center gap-1 ${attemptedSubmit && !fieldValue ? 'text-red-400 font-bold' : 'opacity-70 text-dynamic'}`;
+            };
+
             return (
                 <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-8">
-                    {/* צד ימין - הזנת נתונים מסודרת */}
+                    {/* צד ימין - הזנת נתונים */}
                     <div className="flex-1 space-y-6">
-
+                        
                         {tor4youError && (
                             <div className="bg-red-900/50 p-4 rounded-lg border border-red-500 text-sm">
                                 <h4 className="font-bold text-red-300">מידע מהשרת של Tor4You:</h4>
@@ -554,7 +567,6 @@
                             </div>
                         )}
                         
-                        {/* 1. מפעיל */}
                         {isAdmin && (
                             <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
                                 <label className="text-sm opacity-70 font-medium flex items-center gap-2"><User size={16}/> מי הפעיל את הקבוצה?</label>
@@ -565,7 +577,6 @@
                             </div>
                         )}
 
-                        {/* 2. פרמטרים של הקבוצה */}
                         <div className="grid md:grid-cols-2 gap-4">
                             <Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required />
                             <div className="flex flex-col gap-1">
@@ -581,17 +592,18 @@
                                 </select>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <label className="text-sm opacity-70 font-medium text-dynamic flex items-center gap-1">שם לקוח {loadingCustomers && <Loader className="animate-spin w-3 h-3 text-indigo-400"/>}</label>
+                                <label className={getLabelClass(customerName)}>שם לקוח {loadingCustomers && <Loader className="animate-spin w-3 h-3 text-indigo-400"/>}</label>
                                 {!isManualCustomer && fetchedCustomers.length > 0 ? (
                                     <div className="space-y-2">
-                                        <select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={customerName} onChange={handleCustomerChange} required>
-                                            {fetchedCustomers.map(c => <option key={c.name} value={c.name}>{c.name} ({c.time})</option>)}
+                                        <select className={getFieldClass(customerName)} value={customerName} onChange={handleCustomerChange}>
+                                            <option value="" disabled>-- בחירת לקוח --</option>
+                                            {fetchedCustomers.map(c => <option key={c.name} value={c.name}>{c.name} ({c.time}) - {c.players} שח'</option>)}
                                             <option value="manual_entry">-- לקוח מזדמן / הזנה ידנית --</option>
                                         </select>
-                                        {customerName === 'manual_entry' && <input id="manualCustomerNameInput" type="text" placeholder="הקלד שם לקוח" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" required/>}
+                                        {customerName === 'manual_entry' && <input id="manualCustomerNameInput" type="text" placeholder="הקלד שם לקוח" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white mt-1"/>}
                                     </div>
                                 ) : (
-                                    <input type="text" value={customerName} onChange={e=>setCustomerName(e.target.value)} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" placeholder="הזן שם לקוח" required />
+                                    <input type="text" value={customerName} onChange={e=>setCustomerName(e.target.value)} className={getFieldClass(customerName)} placeholder="הזן שם לקוח" />
                                 )}
                             </div>
                         </div>
@@ -599,20 +611,21 @@
                         <div className="grid md:grid-cols-3 gap-4 border-t border-gray-800 pt-4">
                             <Input label="כמות שחקנים כוללת" type="number" min="2" value={totalPlayers} onChange={e=>setTotalPlayers(e.target.value)} required />
                             <div className="flex flex-col gap-1">
-                                <label className="text-sm opacity-70 font-medium text-dynamic">הרכב קבוצה</label>
-                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={groupType} onChange={e=>setGroupType(e.target.value)}>
+                                <label className={getLabelClass(groupType)}>הרכב קבוצה</label>
+                                <select className={getFieldClass(groupType)} value={groupType} onChange={e=>setGroupType(e.target.value)}>
+                                    <option value="" disabled>-- חובה לבחור --</option>
                                     {['משפחה','חברים','צוות עבודה','בני זוג','גיבוש קבוצה'].map(o => <option key={o} value={o}>{o}</option>)}
                                 </select>
                             </div>
                             <div className="flex flex-col gap-1">
-                                <label className="text-sm opacity-70 font-medium text-dynamic">מקור הגעה</label>
-                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={source} onChange={e=>setSource(e.target.value)}>
+                                <label className={getLabelClass(source)}>מקור הגעה</label>
+                                <select className={getFieldClass(source)} value={source} onChange={e=>setSource(e.target.value)}>
+                                    <option value="" disabled>-- חובה לבחור --</option>
                                     {['גוגל','פייסבוק','EAZY','מפה לאוזן','אינסטגרם','טיקטוק'].map(o => <option key={o} value={o}>{o}</option>)}
                                 </select>
                             </div>
                         </div>
 
-                        {/* 3. הנחות - יוסתר לחלוטין אם יש שובר מגה לאן */}
                         {!hasMegaLaan && (
                             <div className="grid md:grid-cols-2 gap-4 border-t border-gray-800 pt-4 fade-in">
                                 <Input label="ילדים (עד גיל 12)" type="number" min="0" value={kids} onChange={e=>setKids(e.target.value)} />
@@ -620,7 +633,6 @@
                             </div>
                         )}
 
-                        {/* 4. מגה לאן */}
                         <div className="bg-blue-900/20 p-4 rounded-lg border border-blue-800/50 mt-6">
                             <label className="flex items-center gap-2 cursor-pointer font-bold text-blue-300">
                                 <input type="checkbox" checked={hasMegaLaan} onChange={e=>{setHasMegaLaan(e.target.checked); if(e.target.checked){setKids(0);setEligible(0);}}} className="w-5 h-5"/>
@@ -638,7 +650,6 @@
                             )}
                         </div>
 
-                        {/* 5. אמצעי תשלום - עם אייקונים */}
                         <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 mt-6">
                             <h4 className="font-bold mb-4 flex items-center gap-2 text-indigo-300"><DollarSign size={18}/> אמצעי תשלום</h4>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -648,38 +659,24 @@
                                 <Input label="🏦 העברה (₪)" type="number" value={payments.transfer} onChange={e=>setPayments({...payments, transfer: e.target.value})} />
                             </div>
                         </div>
-
                     </div>
 
                     {/* צד שמאל - מחשבון וסיכום נקי */}
                     <div className="w-full lg:w-96">
                         <div className="bg-gray-900 p-6 rounded-xl border border-gray-700 shadow-2xl flex flex-col gap-4 sticky top-24">
                             <h3 className="font-bold text-xl border-b border-gray-700 pb-3 mb-2 flex items-center gap-2"><DollarSign size={20} className="text-indigo-400"/> סיכום חישוב</h3>
-                            
                             <div className="flex justify-between text-sm opacity-90">
                                 <span>מחיר מלא בסיס:</span> 
                                 <span className="font-bold">₪{totalOriginalPrice} <span className="opacity-60 text-xs font-normal">({totalPlayers} שחקנים * ₪{basePricePerPlayer})</span></span>
                             </div>
-                            
                             {!hasMegaLaan && totalDiscountAmount > 0 && (
-                                <div className="flex justify-between text-sm text-red-400">
-                                    <span>סך כל ההנחות:</span> 
-                                    <span className="font-bold">-₪{totalDiscountAmount}</span>
-                                </div>
+                                <div className="flex justify-between text-sm text-red-400"><span>סך כל ההנחות:</span> <span className="font-bold">-₪{totalDiscountAmount}</span></div>
                             )}
-                            
                             {hasMegaLaan && (
-                                <div className="flex justify-between text-sm text-blue-400 bg-blue-900/20 p-2 rounded">
-                                    <span>מגה לאן צפוי:</span> 
-                                    <span className="font-bold">₪{expectedMegaLaanRevenue} <span className="opacity-60 text-xs font-normal">(22% מעוגל מעלה)</span></span>
-                                </div>
+                                <div className="flex justify-between text-sm text-blue-400 bg-blue-900/20 p-2 rounded"><span>מגה לאן צפוי:</span> <span className="font-bold">₪{expectedMegaLaanRevenue}</span></div>
                             )}
-                            
                             {hasMegaLaan && isWeekendMegaLaan && (
-                                <div className="flex justify-between text-sm text-yellow-400">
-                                    <span>תוספת סופ"ש בקופה:</span> 
-                                    <span className="font-bold">₪{weekendMegaLaanFee}</span>
-                                </div>
+                                <div className="flex justify-between text-sm text-yellow-400"><span>תוספת סופ"ש:</span> <span className="font-bold">₪{weekendMegaLaanFee}</span></div>
                             )}
 
                             <div className="flex justify-between text-2xl font-bold bg-gray-800 p-4 rounded-lg border border-gray-700 mt-4 shadow-inner">
@@ -692,19 +689,205 @@
                                     יתרת תשלום להזנה: ₪{paymentBalance}
                                 </div>
                             )}
-                            
                             {paymentBalance === 0 && finalPriceToPay > 0 && (
-                                <div className="mt-2 text-sm font-bold text-center p-2 rounded bg-green-900/30 border border-green-800 text-green-400 flex items-center justify-center gap-2">
-                                    <CheckCircle size={16}/> סכום התשלום הוזן במלואו
-                                </div>
+                                <div className="mt-2 text-sm font-bold text-center p-2 rounded bg-green-900/30 border border-green-800 text-green-400 flex items-center justify-center gap-2"><CheckCircle size={16}/> סכום התשלום הוזן במלואו</div>
                             )}
 
-                            <Button type="submit" className="w-full py-4 mt-6 text-lg font-bold shadow-lg" disabled={saving || paymentBalance !== 0}>
+                            <Button type="submit" className="w-full py-4 mt-6 text-lg font-bold shadow-lg" disabled={saving}>
                                 {saving ? 'שומר נתונים...' : 'שמור דיווח קבוצה'}
                             </Button>
                         </div>
                     </div>
                 </form>
+            );
+        };
+
+        // --- סעיף 4: חלונית (Modal) עריכת אמצעי תשלום למנהל ---
+        const EditGroupModal = ({ group, onClose, employees }) => {
+            const [pays, setPays] = useState(group.payments || {cash:0, credit:0, bit:0, transfer:0});
+            const [saving, setSaving] = useState(false);
+            const empName = group.employeeId === 'admin' ? 'מנהל' : (employees.find(e => e.id === group.employeeId)?.name || 'לא ידוע');
+
+            const totalEntered = (Number(pays.cash)||0) + (Number(pays.credit)||0) + (Number(pays.bit)||0) + (Number(pays.transfer)||0);
+            const balance = group.finalPriceToPay - totalEntered;
+
+            const handleSave = async () => {
+                if (balance !== 0) return alert(`פער בתשלום! סה"כ העסקה: ₪${group.finalPriceToPay}. הוזן: ₪${totalEntered}`);
+                setSaving(true);
+                try {
+                    await updateDoc(getDocRef('groups', group.id), {
+                        payments: { cash: Number(pays.cash)||0, credit: Number(pays.credit)||0, bit: Number(pays.bit)||0, transfer: Number(pays.transfer)||0 }
+                    });
+                    onClose();
+                } catch(e) { alert(e.message); setSaving(false); }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4 fade-in" onClick={onClose}>
+                    <div className="bg-gray-900 p-6 rounded-xl w-full max-w-xl border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3">
+                            <h3 className="text-xl font-bold text-dynamic">פרטי דיווח - {group.customerName}</h3>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors"><XIcon size={20}/></button>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4 bg-gray-800/50 p-4 rounded-lg">
+                            <div><span className="opacity-60">תאריך ושעה:</span> <strong className="float-left">{formatDateIL(group.date)} {group.time}</strong></div>
+                            <div><span className="opacity-60">חדר:</span> <strong className="float-left">{group.room}</strong></div>
+                            <div><span className="opacity-60">שחקנים:</span> <strong className="float-left">{group.totalPlayers}</strong></div>
+                            <div><span className="opacity-60">מפעיל:</span> <strong className="float-left">{empName}</strong></div>
+                            <div><span className="opacity-60">הרכב קבוצה:</span> <strong className="float-left">{group.groupType}</strong></div>
+                            <div><span className="opacity-60">מקור הגעה:</span> <strong className="float-left">{group.source}</strong></div>
+                        </div>
+
+                        <div className="bg-gray-800 p-4 rounded-lg mb-6 shadow-inner">
+                            <h4 className="font-bold border-b border-gray-700 pb-2 mb-3 text-indigo-400 flex items-center gap-2"><DollarSign size={16}/> תחשיב העסקה (לא ניתן לעריכה)</h4>
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-sm"><span>מחיר בסיס:</span> <span>₪{group.totalOriginalPrice}</span></div>
+                                {!group.hasMegaLaan && group.totalDiscountAmount > 0 && <div className="flex justify-between text-sm text-red-400"><span>הנחות (ילדים/זכאים):</span> <span>-₪{group.totalDiscountAmount}</span></div>}
+                                {group.hasMegaLaan && <div className="flex justify-between text-sm text-blue-400"><span>שובר מגה לאן:</span> <span>₪{group.expectedMegaLaanRevenue} (צפי)</span></div>}
+                                {group.hasMegaLaan && group.isWeekendMegaLaan && <div className="flex justify-between text-sm text-yellow-400"><span>תוספת סופ"ש בקופה:</span> <span>₪{group.totalPlayers * 10}</span></div>}
+                                <div className="flex justify-between text-lg font-bold border-t border-gray-700 pt-2 mt-2"><span>סה"כ לתשלום בקופה:</span> <span className="text-green-400">₪{group.finalPriceToPay}</span></div>
+                            </div>
+                        </div>
+
+                        <div className="border-t border-gray-800 pt-4">
+                            <h4 className="font-bold mb-3 flex items-center gap-2"><Edit2 size={16}/> עריכת חלוקת התשלום</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Input label="💵 מזומן" type="number" value={pays.cash} onChange={e=>setPays({...pays, cash: e.target.value})} />
+                                <Input label="💳 אשראי" type="number" value={pays.credit} onChange={e=>setPays({...pays, credit: e.target.value})} />
+                                <Input label="📱 ביט" type="number" value={pays.bit} onChange={e=>setPays({...pays, bit: e.target.value})} />
+                                <Input label="🏦 העברה בנקאית" type="number" value={pays.transfer} onChange={e=>setPays({...pays, transfer: e.target.value})} />
+                            </div>
+                            {balance !== 0 && <div className="text-red-400 text-sm font-bold text-center mt-3 bg-red-900/20 p-2 rounded">יתרת פער: ₪{balance} (חובה לאפס)</div>}
+                            <Button onClick={handleSave} className="w-full mt-4" disabled={saving || balance !== 0}>{saving ? 'מעדכן...' : 'שמור שינויים בחלוקת התשלום'}</Button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminGroups = ({ groups, employees, settings }) => {
+            const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+            const [showManual, setShowManual] = useState(false);
+            const [viewingGroup, setViewingGroup] = useState(null); // סעיף 4 - ניהול חלונית פתוחה
+            const [filters, setFilters] = useState({ emp: '', room: '', type: '' }); // סעיף 3 - מסננים
+
+            const monthGroups = groups.filter(g => g.date.startsWith(month));
+            
+            // חישובי קוביות סעיף 1
+            const totalCash = monthGroups.reduce((acc, g) => acc + (g.payments?.cash || 0), 0);
+            const totalCredit = monthGroups.reduce((acc, g) => acc + (g.payments?.credit || 0), 0);
+            const totalBit = monthGroups.reduce((acc, g) => acc + (g.payments?.bit || 0), 0);
+            const totalTransfer = monthGroups.reduce((acc, g) => acc + (g.payments?.transfer || 0), 0);
+            const totalBitAndTransfer = totalBit + totalTransfer; // איחוד קוביות
+            const totalRevenue = totalCash + totalCredit + totalBitAndTransfer; // חישוב סך הכל
+            
+            // סינון וסדר יורד - סעיפים 2 ו-3
+            const filteredAndSortedGroups = monthGroups
+                .filter(g => (!filters.emp || g.employeeId === filters.emp) && (!filters.room || g.room === filters.room) && (!filters.type || g.groupType === filters.type))
+                .sort((a,b) => new Date(b.date+'T'+b.time) - new Date(a.date+'T'+a.time));
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
+                            <Button onClick={() => exportToXLSGroups(filteredAndSortedGroups, employees, `Groups_${month}.xls`)} variant="success"><Download size={16}/> ייצוא הנתונים</Button>
+                        </div>
+                        <Button onClick={()=>setShowManual(true)}><Plus size={16}/> דיווח ידני</Button>
+                    </div>
+
+                    {/* סעיף 1 - שורת סיכומים משודרגת עם קוביית "סך הכל" מודגשת */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <Card className="text-center"><div className="opacity-70 text-sm">💵 מזומן</div><div className="text-2xl font-bold">₪{totalCash}</div></Card>
+                        <Card className="text-center"><div className="opacity-70 text-sm">💳 אשראי</div><div className="text-2xl font-bold">₪{totalCredit}</div></Card>
+                        <Card className="text-center"><div className="opacity-70 text-sm">📱 ביט והעברה בנקאית</div><div className="text-2xl font-bold">₪{totalBitAndTransfer}</div></Card>
+                        <div className="card-bg rounded-xl p-6 text-center border-green-500 bg-green-900/20 shadow-[0_0_15px_rgba(74,222,128,0.2)] flex flex-col justify-center transition-all hover:shadow-[0_0_20px_rgba(74,222,128,0.4)]">
+                            <div className="text-green-300 text-sm font-bold tracking-wide">סך הכל הכנסות החודש</div>
+                            <div className="text-3xl font-bold text-green-400 mt-1">₪{totalRevenue.toLocaleString()}</div>
+                        </div>
+                    </div>
+                    
+                    <Card title="פירוט דיווחי קבוצות (לחץ על שורה כדי לערוך חלוקת תשלום)" className="border-indigo-500/30">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right text-sm whitespace-nowrap">
+                                <thead className="opacity-90 border-b-2 border-gray-700 bg-gray-800/50">
+                                    <tr>
+                                        <th className="py-3 px-2 font-semibold">תאריך ושעה</th>
+                                        {/* סעיף 3 - מסננים על עמודות */}
+                                        <th className="px-2">
+                                            <select className="bg-transparent text-white border-b border-gray-600 outline-none w-full font-semibold focus:border-indigo-500" value={filters.emp} onChange={e=>setFilters({...filters, emp: e.target.value})}>
+                                                <option value="" className="bg-gray-800">מפעיל (הכל)</option>
+                                                <option value="admin" className="bg-gray-800">מנהל מערכת</option>
+                                                {employees.map(e => <option key={e.id} value={e.id} className="bg-gray-800">{e.name}</option>)}
+                                            </select>
+                                        </th>
+                                        <th className="px-2">
+                                            <select className="bg-transparent text-white border-b border-gray-600 outline-none w-full font-semibold focus:border-indigo-500" value={filters.room} onChange={e=>setFilters({...filters, room: e.target.value})}>
+                                                <option value="" className="bg-gray-800">חדר (הכל)</option>
+                                                {settings.roomsList.split(',').map(r => <option key={r} value={r.trim()} className="bg-gray-800">{r.trim()}</option>)}
+                                            </select>
+                                        </th>
+                                        <th className="px-2 font-semibold">לקוח</th>
+                                        <th className="px-2 font-semibold">שחקנים</th>
+                                        <th className="px-2">
+                                            <select className="bg-transparent text-white border-b border-gray-600 outline-none w-full font-semibold focus:border-indigo-500" value={filters.type} onChange={e=>setFilters({...filters, type: e.target.value})}>
+                                                <option value="" className="bg-gray-800">סוג (הכל)</option>
+                                                {['משפחה','חברים','צוות עבודה','בני זוג','גיבוש קבוצה'].map(t => <option key={t} value={t} className="bg-gray-800">{t}</option>)}
+                                            </select>
+                                        </th>
+                                        <th className="px-2 font-semibold text-green-400">סה"כ לקופה</th>
+                                        <th className="px-2 font-semibold">אמצעים (מז/אש/ב/ה)</th>
+                                        <th className="px-2 font-semibold">פעולות</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-800 text-dynamic">
+                                    {filteredAndSortedGroups.length === 0 && <tr><td colSpan="9" className="text-center py-6 opacity-60">לא נמצאו דיווחים התואמים את הסינון / החודש</td></tr>}
+                                    {filteredAndSortedGroups.map(g => {
+                                        const empName = g.employeeId === 'admin' ? 'מנהל' : (employees.find(e => e.id === g.employeeId)?.name || '');
+                                        const pays = [];
+                                        if(g.payments?.cash) pays.push(`מז:${g.payments.cash}`);
+                                        if(g.payments?.credit) pays.push(`אש:${g.payments.credit}`);
+                                        if(g.payments?.bit) pays.push(`ביט:${g.payments.bit}`);
+                                        if(g.payments?.transfer) pays.push(`הע:${g.payments.transfer}`);
+                                        if(g.hasMegaLaan) pays.push(`מגה לאן`);
+                                        return (
+                                            /* סעיף 4 - פתיחת חלונית בלחיצה על השורה */
+                                            <tr key={g.id} className="hover:bg-indigo-900/30 cursor-pointer transition-colors" onClick={() => setViewingGroup(g)}>
+                                                <td className="py-3 px-2 font-medium">{formatDateIL(g.date)} {g.time}</td>
+                                                <td className="px-2 opacity-80">{empName}</td>
+                                                <td className="px-2 opacity-80">{g.room}</td>
+                                                <td className="px-2 font-medium text-indigo-200">{g.customerName}</td>
+                                                <td className="px-2">{g.totalPlayers}</td>
+                                                <td className="px-2 opacity-80">{g.groupType}</td>
+                                                <td className="px-2 font-bold text-green-400">₪{g.finalPriceToPay}</td>
+                                                <td className="px-2 text-xs opacity-70 whitespace-normal min-w-[120px] max-w-[200px]">{pays.join(' | ')}</td>
+                                                <td className="px-2">
+                                                    <button onClick={(e) => { e.stopPropagation(); confirm("למחוק דיווח?") && deleteDoc(getDocRef('groups', g.id)); }} className="text-red-400 hover:bg-red-900/30 p-1 rounded transition-colors"><Trash2 size={16}/></button>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+
+                    {showManual && (
+                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3>
+                                    <button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button>
+                                </div>
+                                <GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* חלונית צפייה ועריכה (סעיף 4) */}
+                    {viewingGroup && <EditGroupModal group={viewingGroup} employees={employees} onClose={()=>setViewingGroup(null)} />}
+                </div>
             );
         };
 
@@ -738,88 +921,6 @@
             );
         };
 
-        const AdminGroups = ({ groups, employees, settings }) => {
-            const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-            const [showManual, setShowManual] = useState(false);
-            
-            const monthGroups = groups.filter(g => g.date.startsWith(month)).sort((a,b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-            
-            const totalCash = monthGroups.reduce((acc, g) => acc + (g.payments?.cash || 0), 0);
-            const totalCredit = monthGroups.reduce((acc, g) => acc + (g.payments?.credit || 0), 0);
-            const totalBit = monthGroups.reduce((acc, g) => acc + (g.payments?.bit || 0), 0);
-            const totalTransfer = monthGroups.reduce((acc, g) => acc + (g.payments?.transfer || 0), 0);
-            
-            const totalMegaLaanRevenue = monthGroups.reduce((acc, g) => acc + (g.expectedMegaLaanRevenue || 0), 0);
-            const totalRevenue = totalCash + totalCredit + totalBit + totalTransfer;
-
-            return (
-                <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
-                            <Button onClick={() => exportToXLSGroups(monthGroups, employees, `Groups_${month}.xls`)} variant="success"><Download size={16}/> ייצא לאקסל</Button>
-                        </div>
-                        <Button onClick={()=>setShowManual(true)}><Plus size={16}/> דיווח ידני</Button>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                        <Card className="text-center"><div className="opacity-70 text-sm">מזומן</div><div className="text-2xl font-bold">₪{totalCash}</div></Card>
-                        <Card className="text-center"><div className="opacity-70 text-sm">אשראי</div><div className="text-2xl font-bold">₪{totalCredit}</div></Card>
-                        <Card className="text-center"><div className="opacity-70 text-sm">ביט</div><div className="text-2xl font-bold">₪{totalBit}</div></Card>
-                        <Card className="text-center"><div className="opacity-70 text-sm">העברה בנקאית</div><div className="text-2xl font-bold">₪{totalTransfer}</div></Card>
-                        <Card className="text-center border-blue-500/50"><div className="text-blue-300 text-sm font-bold">צפי החזר שוברים</div><div className="text-2xl font-bold text-blue-400">₪{totalMegaLaanRevenue}</div></Card>
-                    </div>
-                    
-                    <Card title={`הכנסות החודש מקופות: ₪${totalRevenue}`} className="border-green-500/30">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-right text-sm whitespace-nowrap">
-                                <thead className="opacity-70 border-b border-gray-700">
-                                    <tr><th>תאריך ושעה</th><th>מפעיל</th><th>חדר</th><th>לקוח</th><th>שחקנים</th><th>סוג</th><th>סה"כ לקופה</th><th>אמצעים</th><th>מחיקה</th></tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-800 text-dynamic opacity-90">
-                                    {monthGroups.length === 0 && <tr><td colSpan="9" className="text-center py-4">אין דיווחים החודש</td></tr>}
-                                    {monthGroups.map(g => {
-                                        const empName = g.employeeId === 'admin' ? 'מנהל' : (employees.find(e => e.id === g.employeeId)?.name || '');
-                                        const pays = [];
-                                        if(g.payments?.cash) pays.push(`מזומן:${g.payments.cash}`);
-                                        if(g.payments?.credit) pays.push(`אשראי:${g.payments.credit}`);
-                                        if(g.payments?.bit) pays.push(`ביט:${g.payments.bit}`);
-                                        if(g.payments?.transfer) pays.push(`העברה:${g.payments.transfer}`);
-                                        if(g.hasMegaLaan) pays.push(`מגה לאן`);
-                                        return (
-                                            <tr key={g.id} className="hover:bg-white/5">
-                                                <td className="py-2">{formatDateIL(g.date)} {g.time}</td>
-                                                <td>{empName}</td>
-                                                <td>{g.room}</td>
-                                                <td>{g.customerName}</td>
-                                                <td>{g.totalPlayers}</td>
-                                                <td>{g.groupType}</td>
-                                                <td className="font-bold text-green-400">₪{g.finalPriceToPay}</td>
-                                                <td className="text-xs opacity-70">{pays.join(', ')}</td>
-                                                <td><button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-400"><Trash2 size={14}/></button></td>
-                                            </tr>
-                                        )
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </Card>
-
-                    {showManual && (
-                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3>
-                                    <button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button>
-                                </div>
-                                <GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        };
-
         const AdminReports = ({ employees, shifts, settings }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
             
@@ -838,7 +939,6 @@
                 await updateDoc(getDocRef('shifts', id), { status: newStatus, approved: newStatus === 'approved' });
             };
 
-            // יצירת לינק טבעי (במקום חלון קופץ) שפותח תמיד את ג'ימייל
             const getMailLink = (emp) => {
                 const template = settings.emailTemplate || INITIAL_SETTINGS_FALLBACK.emailTemplate;
                 const subj = replacePlaceholders(template.subject, { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] });
@@ -892,8 +992,6 @@
                                 <div className="p-4 flex justify-between items-center">
                                     <div className="flex items-center gap-3"><div className="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold text-white">{r.name[0]}</div><span className="text-lg font-bold text-dynamic">{r.name}</span></div>
                                     <div className="text-green-400 font-bold text-xl">₪{r.totalWage}</div>
-                                    
-                                    {/* שינוי קריטי: קישור HTML אמיתי לפתיחת המייל למניעת חסימת Pop-up */}
                                     <a href={getMailLink(r)} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md transition-all border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20">
                                         <Mail size={16}/> שליחת תלוש
                                     </a>
