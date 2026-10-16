@@ -193,14 +193,17 @@
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         };
 
-        const exportToXLSGroups = (groups, employees, filename) => {
+        // הוספת shifts לפונקציה כדי שנוכל לחשב הוצאות שכר בייצוא הכנסות
+        const exportToXLSGroups = (groups, employees, shifts, filename) => {
             let tableRows = `<tr style="background-color:#bae6fd;font-weight:bold;">
                 <td>#</td><td>תאריך</td><td>שעה</td><td>שם החדר</td><td>שם הלקוח</td><td>כמות השחקנים</td>
                 <td>סוג השחקנים<br>(משפחה, בני זוג, חברים, צוות עבודה)</td><td>כיצד הגיעו אלינו?<br>(גוגל, פייסבוק, שלט, מפה לאוזן)</td>
-                <td>סכום לתשלום<br>(לפני הנחה)</td><td>סוג ההנחה</td><td>אחוז הנחה</td><td>סך תשלום<br>(אחרי הנחה)</td>
-                <td>מזומן</td><td>אשראי</td><td>ביט</td><td>העברה בנקאית</td><td>שובר מגה לאן + קוד עסקה</td><td>מפעיל/ה</td>
+                <td>סכום לתשלום<br>(לפני הנחה)</td><td>סוג ההנחה</td><td>אחוז הנחה</td><td>סך תשלום בקופה<br>(אחרי הנחה)</td>
+                <td>מזומן</td><td>אשראי</td><td>ביט</td><td>העברה בנקאית</td><td>שובר מגה לאן (קוד)</td><td>מפעיל/ה</td>
             </tr>`;
             
+            let sumCash = 0, sumCredit = 0, sumBit = 0, sumTransfer = 0, sumMega = 0, sumGross = 0;
+
             groups.forEach((g, index) => {
                 const empName = g.employeeId === 'admin' ? 'מנהל מערכת' : (employees.find(e => e.id === g.employeeId)?.name || 'לא ידוע');
                 let discountType = '';
@@ -216,6 +219,13 @@
                 }
 
                 const megaLaanInfo = g.hasMegaLaan ? `שובר על ${g.megaLaanPlayers} שחקנים (${g.megaLaanCode})` : '';
+
+                sumCash += Number(g.payments?.cash) || 0;
+                sumCredit += Number(g.payments?.credit) || 0;
+                sumBit += Number(g.payments?.bit) || 0;
+                sumTransfer += Number(g.payments?.transfer) || 0;
+                sumMega += Number(g.expectedMegaLaanRevenue) || 0;
+                sumGross += Number(g.finalPriceToPay) + (Number(g.expectedMegaLaanRevenue) || 0);
 
                 tableRows += `<tr>
                     <td>${index + 1}</td>
@@ -238,6 +248,27 @@
                     <td>${empName}</td>
                 </tr>`;
             });
+
+            // חישוב שכר עובדים משוער לחודש המיוצא
+            let totalSalaries = 0;
+            const monthPrefix = groups.length > 0 ? groups[0].date.substring(0, 7) : new Date().toISOString().substring(0,7);
+            const monthlyShifts = shifts.filter(s => s.date.startsWith(monthPrefix) && s.status !== 'rejected');
+            
+            monthlyShifts.forEach(s => {
+                const emp = employees.find(e => e.id === s.employeeId);
+                const w = s.wageAtTime || emp?.wagePerGame || 0;
+                totalSalaries += (Number(s.gamesCount) * w);
+            });
+
+            const netIncome = sumGross - totalSalaries;
+
+            // תוספת שורות סיכום פיננסי לאקסל (סעיף 4)
+            tableRows += `<tr><td colspan="18" style="background-color:#e2e8f0; height:15px;"></td></tr>`;
+            tableRows += `<tr style="font-weight:bold; background-color:#fef08a;"><td colspan="12">סיכום הכנסות - אמצעי תשלום</td><td>מזומן: ₪${sumCash}</td><td>אשראי: ₪${sumCredit}</td><td>ביט: ₪${sumBit}</td><td>העברה: ₪${sumTransfer}</td><td>מגה לאן: ₪${sumMega}</td><td></td></tr>`;
+            tableRows += `<tr style="font-weight:bold; background-color:#bbf7d0;"><td colspan="17">סה"כ הכנסות ברוטו (כולל שווי מגה לאן)</td><td style="text-align:left; font-size:14px;">₪${sumGross}</td></tr>`;
+            tableRows += `<tr style="font-weight:bold; background-color:#fecaca;"><td colspan="17">סה"כ הוצאות שכר עובדים (משוער לחודש זה)</td><td style="text-align:left; font-size:14px;">₪${totalSalaries}</td></tr>`;
+            tableRows += `<tr style="font-weight:bold; background-color:#86efac; font-size:15px;"><td colspan="17">רווח נקי (הכנסות פחות שכר עובדים)</td><td style="text-align:left; font-size:15px;">₪${netIncome}</td></tr>`;
+
             let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse;width:100%;font-family:Arial;}th,td{border:1px solid #ccc;padding:5px;text-align:right;}</style></head><body dir="rtl"><table>${tableRows}</table></body></html>`;
             const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
             const link = document.createElement("a");
@@ -355,7 +386,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 6.0 - מערכת ניהול ERP מתקדמת</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 6.1 - מערכת ERP משודרגת</div>
                     </div>
                 </div>
             );
@@ -379,19 +410,17 @@
                             <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
                         }
                     </main>
-                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v6.0</footer>
+                    <footer className="p-4 text-center text-xs opacity-30 text-dynamic">G-Room System v6.1</footer>
                 </div>
             );
         }
 
-        // --- Shared Component: Group Report Form (UX Updates for Employees) ---
         const GroupReportForm = ({ employeeId, settings, onSave, isAdmin, employees }) => {
             const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
             const [time, setTime] = useState('10:00');
             const [room, setRoom] = useState('');
             const [customerName, setCustomerName] = useState('');
             const [totalPlayers, setTotalPlayers] = useState(2);
-            // סעיף 5 - מתחיל כריק כברירת מחדל כדי לחייב בחירה
             const [groupType, setGroupType] = useState('');
             const [source, setSource] = useState('');
             
@@ -406,7 +435,7 @@
             const [payments, setPayments] = useState({ cash: '', credit: '', bit: '', transfer: '' });
             
             const [saving, setSaving] = useState(false);
-            const [attemptedSubmit, setAttemptedSubmit] = useState(false); // סעיף 6: זיהוי ניסיון שמירה חסר
+            const [attemptedSubmit, setAttemptedSubmit] = useState(false); 
             const [reportEmpId, setReportEmpId] = useState(employeeId);
             const [fetchedCustomers, setFetchedCustomers] = useState([]);
             const [isManualCustomer, setIsManualCustomer] = useState(true);
@@ -432,7 +461,7 @@
                                 setIsManualCustomer(false);
                                 setCustomerName(data.customers[0].name);
                                 setTime(data.customers[0].time); 
-                                setTotalPlayers(data.customers[0].players || 2); // סעיף 7: שאיבת כמות אוטומטית
+                                setTotalPlayers(data.customers[0].players || 2); 
                             } else {
                                 setFetchedCustomers([]);
                                 setIsManualCustomer(true);
@@ -449,7 +478,6 @@
                 fetchAppts();
             }, [date]);
 
-            // סעיף 7: מתעדכן לפי לקוח ספציפי שנבחר מהרשימה
             const handleCustomerChange = (e) => {
                 const val = e.target.value;
                 setCustomerName(val);
@@ -494,14 +522,13 @@
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                setAttemptedSubmit(true); // תחילת בדיקת ולידציה (סעיף 6)
+                setAttemptedSubmit(true); 
 
                 let actualCustName = customerName;
                 if(!isManualCustomer && customerName === 'manual_entry') {
                     actualCustName = document.getElementById('manualCustomerNameInput')?.value;
                 }
 
-                // סעיף 5+6: חסימת שמירה והצגת התרעה אם חסר מידע
                 if (!actualCustName || !groupType || !source || !date || !time) {
                     alert('⚠️ אנא השלם את כל שדות החובה המסומנים באדום (מקור הגעה, סוג קבוצה וכו\').');
                     return;
@@ -547,7 +574,6 @@
                 } finally { setSaving(false); }
             };
 
-            // סעיף 6: סגנון לשדה חסר
             const getFieldClass = (fieldValue) => {
                 return `w-full rounded-lg px-3 py-2 text-white outline-none transition-colors ${attemptedSubmit && !fieldValue ? 'bg-red-900/40 border border-red-500 ring-2 ring-red-500' : 'bg-gray-800 border border-gray-700 focus:ring-2 focus:ring-indigo-500'}`;
             };
@@ -597,7 +623,8 @@
                                     <div className="space-y-2">
                                         <select className={getFieldClass(customerName)} value={customerName} onChange={handleCustomerChange}>
                                             <option value="" disabled>-- בחירת לקוח --</option>
-                                            {fetchedCustomers.map(c => <option key={c.name} value={c.name}>{c.name} ({c.time}) - {c.players} שח'</option>)}
+                                            {/* סעיף 1: מציג רק שם ושעה נקיים */}
+                                            {fetchedCustomers.map(c => <option key={c.name} value={c.name}>{c.name} ({c.time})</option>)}
                                             <option value="manual_entry">-- לקוח מזדמן / הזנה ידנית --</option>
                                         </select>
                                         {customerName === 'manual_entry' && <input id="manualCustomerNameInput" type="text" placeholder="הקלד שם לקוח" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white mt-1"/>}
@@ -613,14 +640,14 @@
                             <div className="flex flex-col gap-1">
                                 <label className={getLabelClass(groupType)}>הרכב קבוצה</label>
                                 <select className={getFieldClass(groupType)} value={groupType} onChange={e=>setGroupType(e.target.value)}>
-                                    <option value="" disabled>-- חובה לבחור --</option>
+                                    <option value="" disabled>-- יש למלא מהרשימה --</option>
                                     {['משפחה','חברים','צוות עבודה','בני זוג','גיבוש קבוצה'].map(o => <option key={o} value={o}>{o}</option>)}
                                 </select>
                             </div>
                             <div className="flex flex-col gap-1">
                                 <label className={getLabelClass(source)}>מקור הגעה</label>
                                 <select className={getFieldClass(source)} value={source} onChange={e=>setSource(e.target.value)}>
-                                    <option value="" disabled>-- חובה לבחור --</option>
+                                    <option value="" disabled>-- יש למלא מהרשימה --</option>
                                     {['גוגל','פייסבוק','EAZY','מפה לאוזן','אינסטגרם','טיקטוק'].map(o => <option key={o} value={o}>{o}</option>)}
                                 </select>
                             </div>
@@ -702,7 +729,6 @@
             );
         };
 
-        // --- סעיף 4: חלונית (Modal) עריכת אמצעי תשלום למנהל ---
         const EditGroupModal = ({ group, onClose, employees }) => {
             const [pays, setPays] = useState(group.payments || {cash:0, credit:0, bit:0, transfer:0});
             const [saving, setSaving] = useState(false);
@@ -766,23 +792,23 @@
             );
         };
 
-        const AdminGroups = ({ groups, employees, settings }) => {
+        const AdminGroups = ({ groups, employees, settings, shifts }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
             const [showManual, setShowManual] = useState(false);
-            const [viewingGroup, setViewingGroup] = useState(null); // סעיף 4 - ניהול חלונית פתוחה
-            const [filters, setFilters] = useState({ emp: '', room: '', type: '' }); // סעיף 3 - מסננים
+            const [viewingGroup, setViewingGroup] = useState(null); 
+            const [filters, setFilters] = useState({ emp: '', room: '', type: '' }); 
 
             const monthGroups = groups.filter(g => g.date.startsWith(month));
             
-            // חישובי קוביות סעיף 1
-            const totalCash = monthGroups.reduce((acc, g) => acc + (g.payments?.cash || 0), 0);
-            const totalCredit = monthGroups.reduce((acc, g) => acc + (g.payments?.credit || 0), 0);
-            const totalBit = monthGroups.reduce((acc, g) => acc + (g.payments?.bit || 0), 0);
-            const totalTransfer = monthGroups.reduce((acc, g) => acc + (g.payments?.transfer || 0), 0);
-            const totalBitAndTransfer = totalBit + totalTransfer; // איחוד קוביות
-            const totalRevenue = totalCash + totalCredit + totalBitAndTransfer; // חישוב סך הכל
+            const totalCash = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.cash) || 0), 0);
+            const totalCredit = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.credit) || 0), 0);
+            const totalBit = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.bit) || 0), 0);
+            const totalTransfer = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.transfer) || 0), 0);
+            const totalMegaLaanRevenue = monthGroups.reduce((acc, g) => acc + (Number(g.expectedMegaLaanRevenue) || 0), 0);
             
-            // סינון וסדר יורד - סעיפים 2 ו-3
+            const totalBitAndTransfer = totalBit + totalTransfer; 
+            const totalRevenue = totalCash + totalCredit + totalBitAndTransfer + totalMegaLaanRevenue; 
+            
             const filteredAndSortedGroups = monthGroups
                 .filter(g => (!filters.emp || g.employeeId === filters.emp) && (!filters.room || g.room === filters.room) && (!filters.type || g.groupType === filters.type))
                 .sort((a,b) => new Date(b.date+'T'+b.time) - new Date(a.date+'T'+a.time));
@@ -792,19 +818,20 @@
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-4">
                             <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/>
-                            <Button onClick={() => exportToXLSGroups(filteredAndSortedGroups, employees, `Groups_${month}.xls`)} variant="success"><Download size={16}/> ייצוא הנתונים</Button>
+                            <Button onClick={() => exportToXLSGroups(filteredAndSortedGroups, employees, shifts, `Groups_${month}.xls`)} variant="success"><Download size={16}/> ייצוא הנתונים</Button>
                         </div>
                         <Button onClick={()=>setShowManual(true)}><Plus size={16}/> דיווח ידני</Button>
                     </div>
 
-                    {/* סעיף 1 - שורת סיכומים משודרגת עם קוביית "סך הכל" מודגשת */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Card className="text-center"><div className="opacity-70 text-sm">💵 מזומן</div><div className="text-2xl font-bold">₪{totalCash}</div></Card>
-                        <Card className="text-center"><div className="opacity-70 text-sm">💳 אשראי</div><div className="text-2xl font-bold">₪{totalCredit}</div></Card>
-                        <Card className="text-center"><div className="opacity-70 text-sm">📱 ביט והעברה בנקאית</div><div className="text-2xl font-bold">₪{totalBitAndTransfer}</div></Card>
-                        <div className="card-bg rounded-xl p-6 text-center border-green-500 bg-green-900/20 shadow-[0_0_15px_rgba(74,222,128,0.2)] flex flex-col justify-center transition-all hover:shadow-[0_0_20px_rgba(74,222,128,0.4)]">
-                            <div className="text-green-300 text-sm font-bold tracking-wide">סך הכל הכנסות החודש</div>
-                            <div className="text-3xl font-bold text-green-400 mt-1">₪{totalRevenue.toLocaleString()}</div>
+                    {/* סעיף 3 - קוביית מגה לאן הוחזרה, וסך הכל מושפע ממנה */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <Card className="text-center"><div className="opacity-70 text-sm">💵 מזומן</div><div className="text-xl font-bold">₪{totalCash}</div></Card>
+                        <Card className="text-center"><div className="opacity-70 text-sm">💳 אשראי</div><div className="text-xl font-bold">₪{totalCredit}</div></Card>
+                        <Card className="text-center"><div className="opacity-70 text-sm">📱 ביט והעברה</div><div className="text-xl font-bold">₪{totalBitAndTransfer}</div></Card>
+                        <Card className="text-center border-blue-500/30"><div className="text-blue-300 text-sm font-bold">🎟️ צפי שוברים</div><div className="text-xl font-bold text-blue-400">₪{totalMegaLaanRevenue}</div></Card>
+                        <div className="card-bg rounded-xl p-4 text-center border-green-500 bg-green-900/20 shadow-[0_0_15px_rgba(74,222,128,0.2)] flex flex-col justify-center transition-all hover:shadow-[0_0_20px_rgba(74,222,128,0.4)]">
+                            <div className="text-green-300 text-xs font-bold tracking-wide">סך הכל הכנסות החודש</div>
+                            <div className="text-2xl font-bold text-green-400 mt-1">₪{totalRevenue.toLocaleString()}</div>
                         </div>
                     </div>
                     
@@ -814,7 +841,6 @@
                                 <thead className="opacity-90 border-b-2 border-gray-700 bg-gray-800/50">
                                     <tr>
                                         <th className="py-3 px-2 font-semibold">תאריך ושעה</th>
-                                        {/* סעיף 3 - מסננים על עמודות */}
                                         <th className="px-2">
                                             <select className="bg-transparent text-white border-b border-gray-600 outline-none w-full font-semibold focus:border-indigo-500" value={filters.emp} onChange={e=>setFilters({...filters, emp: e.target.value})}>
                                                 <option value="" className="bg-gray-800">מפעיל (הכל)</option>
@@ -852,7 +878,6 @@
                                         if(g.payments?.transfer) pays.push(`הע:${g.payments.transfer}`);
                                         if(g.hasMegaLaan) pays.push(`מגה לאן`);
                                         return (
-                                            /* סעיף 4 - פתיחת חלונית בלחיצה על השורה */
                                             <tr key={g.id} className="hover:bg-indigo-900/30 cursor-pointer transition-colors" onClick={() => setViewingGroup(g)}>
                                                 <td className="py-3 px-2 font-medium">{formatDateIL(g.date)} {g.time}</td>
                                                 <td className="px-2 opacity-80">{empName}</td>
@@ -885,38 +910,7 @@
                         </div>
                     )}
                     
-                    {/* חלונית צפייה ועריכה (סעיף 4) */}
                     {viewingGroup && <EditGroupModal group={viewingGroup} employees={employees} onClose={()=>setViewingGroup(null)} />}
-                </div>
-            );
-        };
-
-        const AdminDashboard = ({ data, settings }) => {
-            const [tab, setTab] = useState('groups');
-            const pendingReq = data.requests.filter(r => r.status === 'pending');
-            const pendingCons = data.constraints.filter(c => c.status === 'pending');
-            const pendingShifts = data.shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
-            
-            return (
-                <div className="space-y-6">
-                    <div className="flex flex-wrap gap-2 border-b border-dynamic pb-2">
-                        {[{id:'groups', l:'הכנסות וקבוצות', i:Coins}, {id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות שכר', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'tasks', l:'משימות', i:CheckSquare}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
-                            <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}><m.i size={18} className="icon-dynamic"/> {m.l} 
-                            {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
-                            {m.id === 'shifts' && pendingShifts.length > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingShifts.length}</span>}
-                            </button>
-                        )}
-                        {pendingReq.length > 0 && <button onClick={()=>setTab('requests')} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg ml-auto transition-colors ${tab==='requests'?'bg-indigo-600/10 border-b-2 border-indigo-500':'text-yellow-400'}`}><Bell size={18} className="animate-bounce"/><span className="font-bold">{pendingReq.length}</span></button>}
-                    </div>
-                    <div className="fade-in">
-                        {tab==='groups' && <AdminGroups groups={data.groups} employees={data.employees} settings={settings}/>}
-                        {tab==='employees' && <AdminEmployees employees={data.employees}/>}
-                        {tab==='shifts' && <AdminReports employees={data.employees} shifts={data.shifts} settings={settings}/>}
-                        {tab==='constraints' && <AdminConstraints employees={data.employees} constraints={data.constraints} settings={settings}/>}
-                        {tab==='tasks' && <AdminTasks employees={data.employees} tasks={data.tasks}/>}
-                        {tab==='settings' && <AdminSettings settings={settings}/>}
-                        {tab==='requests' && <AdminRequests requests={pendingReq} employees={data.employees}/>}
-                    </div>
                 </div>
             );
         };
