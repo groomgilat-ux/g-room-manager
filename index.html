@@ -92,8 +92,7 @@
             secondaryColor: '#ffffff',
             roomsList: 'סודו של הודיני',
             pricing: { basePrice2: 140, basePrice3: 125, basePrice4: 110, basePrice5: 100, basePrice6to8: 90, basePrice9to10: 80, discountKids: 15, discountEligible: 10 },
-            emailTemplate: { subject: 'G-Room: תלוש שכר {month}/{year}', body: 'היי {name},\nמצורף תלוש.\nבברכה,\nהנהלת G-Room' },
-            openingHours: { Sunday: { start: '10:00', end: '23:00' }, Monday: { start: '10:00', end: '23:00' }, Tuesday: { start: '10:00', end: '23:00' }, Wednesday: { start: '10:00', end: '23:00' }, Thursday: { start: '10:00', end: '01:00' }, Friday: { start: '09:00', end: '15:00' }, Saturday: { start: '18:00', end: '01:00' } }
+            emailTemplate: { subject: 'G-Room: תלוש שכר {month}/{year}', body: 'היי {name},\nמצורף תלוש.\nבברכה,\nהנהלת G-Room' }
         };
 
         // --- Utilities ---
@@ -360,7 +359,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.2 - תיקון אייקונים והגנות חלונית מנהל</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.3 - פילוח גרפים חכם ויומן 30 דקות</div>
                     </div>
                 </div>
             );
@@ -462,10 +461,8 @@
             let expectedMegaLaanRevenue = hasMegaLaan ? Math.ceil(Number(megaLaanPlayers) * basePricePerPlayer * 0.78) : 0;
             let weekendMegaLaanFee = (hasMegaLaan && isWeekendMegaLaan) ? Number(megaLaanPlayers) * 10 : 0;
             
-            // בטוח יותר לבדוק ש-pricing לא ריק לפני שקוראים למשתנים שלו
             const discountK = settings.pricing?.discountKids || 15;
             const discountE = settings.pricing?.discountEligible || 10;
-            
             let totalDiscountAmount = hasMegaLaan ? 0 : (Number(kids) * basePricePerPlayer * (discountK / 100) + Number(eligible) * basePricePerPlayer * (discountE / 100));
             
             let finalPriceToPay = hasMegaLaan ? ((Number(totalPlayers) - Number(megaLaanPlayers) > 0 ? (Number(totalPlayers) - Number(megaLaanPlayers)) * basePricePerPlayer : 0) + weekendMegaLaanFee) : (totalOriginalPrice - totalDiscountAmount);
@@ -497,7 +494,14 @@
                         const emp = employees?.find(e=>e.id === reportEmpId);
                         if(emp) wageAtTime = emp.wagePerGame || 0;
                     }
-                    await timeoutPromise(addDoc(getCollectionRef('shifts'), { employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, status: 'pending', wageAtTime, isAutoGroup: true }), 4000);
+                    
+                    // סעיף 1: מנהל מערכת שמדווח - המשמרת תאושר אוטומטית מיד ללא צורך בהמתנה!
+                    const shiftStatus = isAdmin ? 'approved' : 'pending';
+                    await timeoutPromise(addDoc(getCollectionRef('shifts'), { 
+                        employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, 
+                        status: shiftStatus, approved: isAdmin, wageAtTime, isAutoGroup: true 
+                    }), 4000);
+                    
                     alert('קבוצה ומשמרת נשמרו בהצלחה!'); onSave();
                 } catch(err) { alert(err.message === 'Timeout' ? 'נשמר בענן (איטי)' : err.message); onSave(); } 
                 finally { setSaving(false); }
@@ -577,10 +581,10 @@
                         <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 mt-6">
                             <h4 className="font-bold mb-4 flex items-center gap-2 text-indigo-300"><DollarSign size={18}/> אמצעי תשלום</h4>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <Input label="💵 מזומן (₪)" type="number" value={payments.cash} onChange={e=>setPayments({...payments, cash: e.target.value})} />
-                                <Input label="💳 אשראי (₪)" type="number" value={payments.credit} onChange={e=>setPayments({...payments, credit: e.target.value})} />
-                                <Input label="📱 ביט (₪)" type="number" value={payments.bit} onChange={e=>setPayments({...payments, bit: e.target.value})} />
-                                <Input label="🏦 העברה (₪)" type="number" value={payments.transfer} onChange={e=>setPayments({...payments, transfer: e.target.value})} />
+                                <Input label="💵 מזומן (₪)" type="number" step="any" value={payments.cash} onChange={e=>setPayments({...payments, cash: e.target.value})} />
+                                <Input label="💳 אשראי (₪)" type="number" step="any" value={payments.credit} onChange={e=>setPayments({...payments, credit: e.target.value})} />
+                                <Input label="📱 ביט (₪)" type="number" step="any" value={payments.bit} onChange={e=>setPayments({...payments, bit: e.target.value})} />
+                                <Input label="🏦 העברה (₪)" type="number" step="any" value={payments.transfer} onChange={e=>setPayments({...payments, transfer: e.target.value})} />
                             </div>
                         </div>
                     </div>
@@ -652,10 +656,10 @@
                             <h4 className="font-bold mb-3 flex items-center gap-2"><Edit2 size={16}/> עריכת פרטי תשלום (מנהל)</h4>
                             <Input label="מספר חשבונית/קבלה" value={inv} onChange={e=>setInv(e.target.value)} className="mb-4" />
                             <div className="grid grid-cols-2 gap-3">
-                                <Input label="💵 מזומן" type="number" value={pays.cash} onChange={e=>setPays({...pays, cash: e.target.value})} />
-                                <Input label="💳 אשראי" type="number" value={pays.credit} onChange={e=>setPays({...pays, credit: e.target.value})} />
-                                <Input label="📱 ביט" type="number" value={pays.bit} onChange={e=>setPays({...pays, bit: e.target.value})} />
-                                <Input label="🏦 העברה" type="number" value={pays.transfer} onChange={e=>setPays({...pays, transfer: e.target.value})} />
+                                <Input label="💵 מזומן" type="number" step="any" value={pays.cash} onChange={e=>setPays({...pays, cash: e.target.value})} />
+                                <Input label="💳 אשראי" type="number" step="any" value={pays.credit} onChange={e=>setPays({...pays, credit: e.target.value})} />
+                                <Input label="📱 ביט" type="number" step="any" value={pays.bit} onChange={e=>setPays({...pays, bit: e.target.value})} />
+                                <Input label="🏦 העברה" type="number" step="any" value={pays.transfer} onChange={e=>setPays({...pays, transfer: e.target.value})} />
                             </div>
                             {balance !== 0 && <div className="text-red-400 text-sm font-bold text-center mt-3 bg-red-900/20 p-2 rounded">יתרת פער: ₪{balance} (חובה לאפס)</div>}
                             <Button onClick={handleSave} className="w-full mt-4" disabled={saving || balance !== 0}>{saving ? 'מעדכן...' : 'שמור שינויים'}</Button>
@@ -770,7 +774,7 @@
                         </div>
                     </Card>
 
-                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה ידני</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
+                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
                     {viewingGroup && <EditGroupModal group={viewingGroup} employees={employees} onClose={()=>setViewingGroup(null)} />}
                 </div>
             );
@@ -782,24 +786,39 @@
             
             const [expName, setExpName] = useState('');
             const [expCategory, setExpCategory] = useState('שכירות');
+            const [customCategory, setCustomCategory] = useState(''); // סעיף 2: קטגוריה חופשית
             const [expAmount, setExpAmount] = useState('');
             const [expFrom, setExpFrom] = useState(month);
             const [expTo, setExpTo] = useState(month);
             const [saving, setSaving] = useState(false);
 
+            // סעיף 3: הרכבת רשימת קטגוריות חכמה מתוך ההוצאות הקיימות
+            const defaultCats = ['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל'];
+            const dynamicCats = [...new Set([...defaultCats, ...expenses.map(e => e.category)])].filter(Boolean);
+
+            // בחירת 4 הקטגוריות הנפוצות ביותר לכפתורי השליפה המהירה
+            const quickCats = useMemo(() => {
+                const counts = expenses.reduce((acc, ex) => { acc[ex.category] = (acc[ex.category]||0) + 1; return acc; }, {});
+                const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
+                return top.length > 0 ? top : ['שכירות', 'חשמל', 'שיווק ופרסום', 'תחזוקה וציוד'];
+            }, [expenses]);
+
             const handleAddExpense = async (e) => {
                 e.preventDefault();
                 if (expFrom > expTo) return alert('חודש הסיום לא יכול להיות לפני חודש ההתחלה');
+                const finalCategory = expCategory === 'אחר' ? customCategory : expCategory;
+                if (!finalCategory) return alert('נא להזין קטגוריה');
+
                 setSaving(true);
                 const monthsCount = getMonthsDifference(expFrom, expTo);
                 const monthlyRatio = Number(expAmount) / monthsCount;
                 try {
                     await addDoc(getCollectionRef('expenses'), {
-                        name: expName, category: expCategory, totalAmount: Number(expAmount),
+                        name: expName, category: finalCategory, totalAmount: Number(expAmount),
                         fromMonth: expFrom, toMonth: expTo, monthlyAmount: monthlyRatio,
                         createdAt: new Date().toISOString()
                     });
-                    setShowForm(false); setExpName(''); setExpAmount('');
+                    setShowForm(false); setExpName(''); setExpAmount(''); setCustomCategory('');
                 } catch(err) { alert(err.message); } finally { setSaving(false); }
             };
 
@@ -816,11 +835,20 @@
 
             const activeExpenses = expenses.filter(ex => isMonthInRange(month, ex.fromMonth, ex.toMonth));
             const totalExpenses = activeExpenses.reduce((acc, ex) => acc + ex.monthlyAmount, 0);
-
             const netProfit = totalRevenue - totalSalaries - totalExpenses;
+
+            // סעיף 4: חישוב לגרף פירוט הוצאות צבעוני
+            const expByCategory = activeExpenses.reduce((acc, ex) => {
+                acc[ex.category] = (acc[ex.category] || 0) + ex.monthlyAmount;
+                return acc;
+            }, {});
+            
             const maxVal = Math.max(totalRevenue, totalSalaries + totalExpenses);
             const revPct = maxVal > 0 ? (totalRevenue / maxVal) * 100 : 0;
-            const expPct = maxVal > 0 ? ((totalSalaries + totalExpenses) / maxVal) * 100 : 0;
+            const salaryPct = maxVal > 0 ? (totalSalaries / maxVal) * 100 : 0;
+            
+            // פלטת צבעים נעימה לגרף ההוצאות
+            const graphColors = ['#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#6366f1'];
 
             const exportFinancialXLS = () => {
                 let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse;width:100%;font-family:Arial;}th,td{border:1px solid #ccc;padding:5px;text-align:right;}</style></head><body dir="rtl">
@@ -861,8 +889,27 @@
 
                     <Card title="מאזן חודשי">
                         <div className="space-y-4">
-                            <div><div className="flex justify-between text-sm mb-1 text-green-300"><span>הכנסות</span> <span>{Math.round(revPct)}%</span></div><div className="w-full bg-gray-800 rounded-full h-3"><div className="bg-green-500 h-3 rounded-full transition-all duration-1000" style={{width: `${revPct}%`}}></div></div></div>
-                            <div><div className="flex justify-between text-sm mb-1 text-red-300"><span>הוצאות ושכר</span> <span>{Math.round(expPct)}%</span></div><div className="w-full bg-gray-800 rounded-full h-3"><div className="bg-red-500 h-3 rounded-full transition-all duration-1000" style={{width: `${expPct}%`}}></div></div></div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-1 text-green-300"><span>הכנסות</span> <span>{Math.round(revPct)}%</span></div>
+                                <div className="w-full bg-gray-800 rounded-full h-4"><div className="bg-green-500 h-4 rounded-full transition-all duration-1000" style={{width: `${revPct}%`}}></div></div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-1 text-red-300"><span>הוצאות ושכר פילוח צבעוני</span> <span>{Math.round((totalSalaries+totalExpenses)/maxVal*100 || 0)}%</span></div>
+                                <div className="w-full bg-gray-800 rounded-full h-4 flex overflow-hidden">
+                                    <div style={{width: `${salaryPct}%`, backgroundColor: '#ef4444'}} title={`שכר עובדים: ₪${Math.round(totalSalaries)}`} className="transition-all duration-1000"></div>
+                                    {Object.entries(expByCategory).map(([cat, amount], idx) => {
+                                        const pct = maxVal > 0 ? (amount / maxVal) * 100 : 0;
+                                        return <div key={cat} style={{width: `${pct}%`, backgroundColor: graphColors[idx % graphColors.length]}} title={`${cat}: ₪${Math.round(amount)}`} className="transition-all duration-1000 border-r border-gray-900/50"></div>
+                                    })}
+                                </div>
+                                {/* מקרא צבעים קטן */}
+                                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs opacity-90">
+                                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div>שכר עובדים (₪{Math.round(totalSalaries)})</div>
+                                    {Object.entries(expByCategory).map(([cat, amount], idx) => (
+                                        <div key={cat} className="flex items-center gap-1"><div className="w-3 h-3 rounded-full" style={{backgroundColor: graphColors[idx % graphColors.length]}}></div>{cat} (₪{Math.round(amount)})</div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </Card>
 
@@ -872,12 +919,17 @@
                                 <thead className="opacity-70 border-b border-gray-700"><tr><th>תיאור ההוצאה</th><th>קטגוריה</th><th>סכום כולל</th><th>תקופת חיוב</th><th>חלק יחסי לחודש זה</th><th>מחק</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800">
                                     {activeExpenses.length === 0 && <tr><td colSpan="6" className="text-center py-4">אין הוצאות מתועדות לחודש זה</td></tr>}
-                                    {activeExpenses.map(ex => (
+                                    {activeExpenses.map((ex, idx) => {
+                                        const catIndex = Object.keys(expByCategory).indexOf(ex.category);
+                                        const dotColor = graphColors[catIndex % graphColors.length];
+                                        return (
                                         <tr key={ex.id} className="hover:bg-white/5">
-                                            <td className="py-2 font-bold">{ex.name}</td><td>{ex.category}</td><td>₪{ex.totalAmount}</td><td className="text-xs opacity-70">{ex.fromMonth} עד {ex.toMonth}</td><td className="font-bold text-orange-400">₪{ex.monthlyAmount.toFixed(1)}</td>
+                                            <td className="py-2 font-bold">{ex.name}</td>
+                                            <td className="flex items-center gap-2 mt-2"><div className="w-2 h-2 rounded-full" style={{backgroundColor: dotColor}}></div>{ex.category}</td>
+                                            <td>₪{ex.totalAmount}</td><td className="text-xs opacity-70">{ex.fromMonth} עד {ex.toMonth}</td><td className="font-bold text-orange-400">₪{ex.monthlyAmount.toFixed(1)}</td>
                                             <td><button onClick={() => confirm("למחוק הוצאה?") && deleteDoc(getDocRef('expenses', ex.id))} className="text-red-400"><Trash2 size={14}/></button></td>
                                         </tr>
-                                    ))}
+                                    )})}
                                 </tbody>
                             </table>
                         </div>
@@ -885,15 +937,29 @@
 
                     {showForm && (
                         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700">
+                            <div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto">
                                 <h3 className="text-xl font-bold mb-4">רישום הוצאה למערכת</h3>
                                 <form onSubmit={handleAddExpense} className="space-y-4">
                                     <Input label="תיאור / שם ההוצאה" value={expName} onChange={e=>setExpName(e.target.value)} required />
+                                    
+                                    {/* סעיף 3: תיוג מהיר של קטגוריות נפוצות */}
                                     <div className="flex flex-col gap-1">
                                         <label className="text-sm opacity-70">קטגוריה</label>
-                                        <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={expCategory} onChange={e=>setExpCategory(e.target.value)}>{['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל','אחר'].map(c => <option key={c} value={c}>{c}</option>)}</select>
+                                        <div className="flex gap-2 flex-wrap mb-1">
+                                            {quickCats.map(c => (
+                                                <button key={c} type="button" onClick={()=>setExpCategory(c)} className={`text-xs px-3 py-1 rounded-full border transition-colors ${expCategory===c ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>{c}</button>
+                                            ))}
+                                        </div>
+                                        <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={expCategory} onChange={e=>setExpCategory(e.target.value)}>
+                                            {dynamicCats.map(c => <option key={c} value={c}>{c}</option>)}
+                                            <option value="אחר">אחר (הזן קטגוריה חדשה)...</option>
+                                        </select>
                                     </div>
-                                    <Input label="סכום כולל לתשלום (₪)" type="number" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required />
+                                    
+                                    {/* סעיף 2: פתיחת טקסט חופשי אם נבחר "אחר" */}
+                                    {expCategory === 'אחר' && <Input label="הזן שם קטגוריה חדשה" value={customCategory} onChange={e=>setCustomCategory(e.target.value)} required />}
+
+                                    <Input label="סכום כולל לתשלום (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required />
                                     <div className="bg-indigo-900/20 p-3 rounded border border-indigo-500/30 text-xs">הסכום יתחלק שווה בשווה על פני החודשים שיוגדרו:</div>
                                     <div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div>
                                     <div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setShowForm(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'הוסף הוצאה'}</Button></div>
@@ -928,7 +994,7 @@
             return (
                 <div className="space-y-6">
                     {pendingShifts.length > 0 && (
-                        <Card title="משמרות ממתינות לאישור" className="border-yellow-500/50">
+                        <Card title="משמרות ממתינות לאישור (דיווחים שנכנסו ע&quot;י עובדים)" className="border-yellow-500/50">
                             <div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך</th><th>שעה</th><th>חדר</th><th>משחקים</th><th>תעריף</th><th>פעולות</th></tr></thead><tbody className="divide-y divide-gray-800">
                                 {pendingShifts.map(s => {
                                     const e = employees.find(emp => emp.id === s.employeeId);
@@ -1004,7 +1070,13 @@
             const days = useMemo(() => Array.from({length:7}, (_,i) => {
                 const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d;
             }), [offset]);
-            const hours = Array.from({length:17}, (_,i) => i+8);
+            
+            // סעיף 5: מערך של 32 חצאי שעות - מ-08:00 ועד 23:30
+            const hours = Array.from({length:32}, (_,i) => {
+                const h = Math.floor(i/2) + 8;
+                const m = i%2 === 0 ? '00' : '30';
+                return `${h.toString().padStart(2,'0')}:${m}`;
+            });
 
             useEffect(() => {
                 const fetchWeekSlots = async () => {
@@ -1019,17 +1091,27 @@
                 fetchWeekSlots();
             }, [offset]);
 
-            const getStatus = (d, h, customConstraints = constraints) => {
+            // סעיף 5: חישוב מדויק של התנגשות בחצאי שעות
+            const getStatus = (d, hStr, customConstraints = constraints) => {
                 const dStr = d.toISOString().slice(0,10);
-                const hasSlotInTor4You = tor4youSlotsMap[dStr] && tor4youSlotsMap[dStr].includes(h);
+                const hasSlotInTor4You = tor4youSlotsMap[dStr] && tor4youSlotsMap[dStr].includes(hStr);
                 if (!hasSlotInTor4You) return -1;
+                
+                const [curH, curM] = hStr.split(':').map(Number);
+                const curMin = curH * 60 + curM;
+
                 let count = 0;
                 employees.forEach(emp => {
                     const busy = customConstraints.some(c => {
                         if (c.employeeId !== emp.id || c.status === 'rejected') return false; 
                         if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
-                        const cs = parseInt(c.startTime.split(':')[0]); const ce = parseInt(c.endTime.split(':')[0]);
-                        return c.date === dStr && h >= cs && h < ce;
+                        
+                        const [sH, sM] = c.startTime.split(':').map(Number); 
+                        const [eH, eM] = c.endTime.split(':').map(Number);
+                        const sMin = sH * 60 + sM;
+                        const eMin = eH * 60 + eM;
+                        
+                        return c.date === dStr && curMin >= sMin && curMin < eMin;
                     });
                     if (!busy) count++;
                 });
@@ -1041,10 +1123,19 @@
                 await updateDoc(getDocRef('constraints', id), { status });
                 if (status === 'approved' && c.type === 'single') {
                     const updatedConstraints = constraints.map(x => x.id === id ? { ...x, status: 'approved' } : x);
-                    const sHour = parseInt(c.startTime.split(':')[0]); const eHour = parseInt(c.endTime.split(':')[0]);
+                    
+                    const [sH, sM] = c.startTime.split(':').map(Number); 
+                    const [eH, eM] = c.endTime.split(':').map(Number);
+                    const startMin = sH * 60 + sM;
+                    const endMin = eH * 60 + eM;
                     const checkDate = new Date(c.date);
+                    
                     let hasZero = false;
-                    for (let h = sHour; h < eHour; h++) { if (getStatus(checkDate, h, updatedConstraints) === 0) hasZero = true; }
+                    for (let m = startMin; m < endMin; m += 30) { 
+                        const hStr = `${Math.floor(m/60).toString().padStart(2,'0')}:${m%60===0?'00':'30'}`;
+                        if (getStatus(checkDate, hStr, updatedConstraints) === 0) hasZero = true; 
+                    }
+                    
                     if (hasZero) {
                         if (confirm(`⚠️ אישור אילוץ זה משאיר 0 עובדים זמינים למשבצות שפתוחות ב-Tor4You בשעות ${c.startTime}-${c.endTime}.\nלסרוק ולנעול אוטומטית משבצות ריקות באתר?`)) {
                             setIsBlocking(true);
@@ -1075,11 +1166,11 @@
                             </tbody></table>
                         </div>
                     </Card>
-                    <Card title="מפת זמינות (מסונכרן עם Tor4You)">
+                    <Card title="מפת זמינות (מרווחים של 30 דקות לפי Tor4You)">
                         <div className="flex justify-between items-center mb-4"><Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button><span className="flex items-center gap-2">{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())} {loadingSlots && <Loader className="w-4 h-4 animate-spin text-indigo-400"/>}</span><Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button></div>
                         <div className="overflow-x-auto"><div className="min-w-[800px]"><div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold text-dynamic"><div className="bg-gray-800 p-2 rounded">שעה</div>{days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm rounded">{d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'})}</div>)}</div>
                             {hours.map(h => (
-                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs"><div className="bg-gray-800 p-2 rounded text-dynamic">{h.toString().padStart(2,'0')}:00</div>
+                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs"><div className="bg-gray-800 p-2 rounded text-dynamic">{h}</div>
                                     {days.map((d,i) => {
                                         const stat = getStatus(d, h);
                                         let bg = 'bg-green-900/60';
@@ -1193,7 +1284,7 @@
             const [open, setOpen] = useState(false); const [sending, setSending] = useState(false);
             const month = new Date().toISOString().slice(0, 7);
             const myShifts = shifts.filter(s => s.employeeId === employee.id && s.date.startsWith(month));
-            const wage = myShifts.reduce((acc, curr) => acc + (curr.gamesCount * (curr.wageAtTime || employee.wagePerGame)), 0);
+            const wage = myShifts.reduce((acc, curr) => acc + (curr.gamesCount * (curr.wageAtTime || employee.wagePerGame || 0)), 0);
             const request = async (e) => { e.preventDefault(); setSending(true); const fd = new FormData(e.target); try { await addDoc(getCollectionRef('requests'), { employeeId: employee.id, status: 'pending', date: new Date().toISOString(), newData: { phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), birthday: fd.get('birthday') } }); alert('נשלח'); setOpen(false); } catch(e) { alert(e.message); } finally { setSending(false); } };
             return (
                 <div className="grid md:grid-cols-2 gap-6">
