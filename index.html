@@ -52,7 +52,7 @@
         import React, { useState, useEffect, useMemo, useCallback } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
-            Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, 
+            User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, 
             FileText, Mail, CheckCircle, XCircle, Lock, 
             X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell
         } from 'lucide-react';
@@ -167,8 +167,8 @@
                     <tr style="background-color:#f3f4f6;font-weight:bold;"><td>תאריך</td><td>התחלה</td><td>סיום (משוער)</td><td>חדר</td><td>משחקים</td><td>תעריף משומר</td><td>סה"כ</td></tr>`;
                     emp.empShifts.forEach(s => {
                         const endTime = addTime(s.startTime, s.gamesCount * 90); 
-                        const shiftWage = s.gamesCount * s.wageAtTime;
-                        tableRows += `<tr><td>${formatDateIL(s.date)}</td><td>${s.startTime}</td><td>${endTime}</td><td>${s.room}</td><td>${s.gamesCount}</td><td>₪${s.wageAtTime}</td><td>₪${shiftWage}</td></tr>`;
+                        const shiftWage = s.gamesCount * (s.wageAtTime || emp.wagePerGame || 0);
+                        tableRows += `<tr><td>${formatDateIL(s.date)}</td><td>${s.startTime}</td><td>${endTime}</td><td>${s.room}</td><td>${s.gamesCount}</td><td>₪${s.wageAtTime || emp.wagePerGame || 0}</td><td>₪${shiftWage}</td></tr>`;
                     });
                     tableRows += `<tr><td colspan="6" style="font-weight:bold;">סה"כ לתשלום:</td><td style="font-weight:bold;background-color:#dcfce7;">₪${emp.totalWage}</td></tr><tr><td colspan="7"></td></tr>`;
                 }
@@ -360,7 +360,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.1 - תיקון שגיאת שמירת דיווח</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.2 - תיקון אייקונים והגנות חלונית מנהל</div>
                     </div>
                 </div>
             );
@@ -461,7 +461,12 @@
             
             let expectedMegaLaanRevenue = hasMegaLaan ? Math.ceil(Number(megaLaanPlayers) * basePricePerPlayer * 0.78) : 0;
             let weekendMegaLaanFee = (hasMegaLaan && isWeekendMegaLaan) ? Number(megaLaanPlayers) * 10 : 0;
-            let totalDiscountAmount = hasMegaLaan ? 0 : (Number(kids) * basePricePerPlayer * (settings.pricing.discountKids / 100) + Number(eligible) * basePricePerPlayer * (settings.pricing.discountEligible / 100));
+            
+            // בטוח יותר לבדוק ש-pricing לא ריק לפני שקוראים למשתנים שלו
+            const discountK = settings.pricing?.discountKids || 15;
+            const discountE = settings.pricing?.discountEligible || 10;
+            
+            let totalDiscountAmount = hasMegaLaan ? 0 : (Number(kids) * basePricePerPlayer * (discountK / 100) + Number(eligible) * basePricePerPlayer * (discountE / 100));
             
             let finalPriceToPay = hasMegaLaan ? ((Number(totalPlayers) - Number(megaLaanPlayers) > 0 ? (Number(totalPlayers) - Number(megaLaanPlayers)) * basePricePerPlayer : 0) + weekendMegaLaanFee) : (totalOriginalPrice - totalDiscountAmount);
 
@@ -765,7 +770,7 @@
                         </div>
                     </Card>
 
-                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
+                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה ידני</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
                     {viewingGroup && <EditGroupModal group={viewingGroup} employees={employees} onClose={()=>setViewingGroup(null)} />}
                 </div>
             );
@@ -907,7 +912,7 @@
 
             const report = employees.map(emp => {
                 const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id).sort((a,b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
-                const totalWage = empShifts.reduce((acc, s) => acc + (Number(s.gamesCount) * (s.wageAtTime || emp.wagePerGame)), 0);
+                const totalWage = empShifts.reduce((acc, s) => acc + (Number(s.gamesCount) * (s.wageAtTime || emp.wagePerGame || 0)), 0);
                 return { ...emp, totalWage, empShifts };
             });
             const totalPay = report.reduce((acc, r) => acc + r.totalWage, 0);
@@ -953,7 +958,7 @@
                                 {r.empShifts.length > 0 && (
                                     <div className="bg-black/20 p-2 text-sm border-t border-gray-800"><div className="grid grid-cols-7 text-gray-500 mb-2 px-2 text-xs font-bold"><div>תאריך</div><div>שעה</div><div>חדר</div><div>משחקים</div><div>תעריף</div><div>סה"כ</div><div>מחק</div></div>
                                         {r.empShifts.map(s => {
-                                            const w = s.wageAtTime || r.wagePerGame;
+                                            const w = s.wageAtTime || r.wagePerGame || 0;
                                             return (
                                             <div key={s.id} className="grid grid-cols-7 py-2 px-2 border-b border-gray-800 items-center hover:bg-white/5 text-dynamic opacity-80">
                                                 <div>{formatDateIL(s.date)}</div><div>{s.startTime}</div><div>{s.room}</div><div>{s.gamesCount}</div><div>₪{w}</div><div>₪{s.gamesCount * w}</div>
