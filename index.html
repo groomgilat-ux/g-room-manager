@@ -365,7 +365,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.8 - תיקון שרת אוטומציית מחיקות Tor4You</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.8 - סריקת אילוצים אוטומטית למנהל</div>
                     </div>
                 </div>
             );
@@ -1109,6 +1109,95 @@
             );
         };
 
+        const AdminIssues = ({ issues, employees, settings }) => {
+            const pendingIssues = issues.filter(i => i.status === 'pending').sort((a,b) => new Date(a.reportedAt) - new Date(b.reportedAt));
+            const doneIssues = issues.filter(i => i.status === 'done').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
+
+            const [room, setRoom] = useState('');
+            const [desc, setDesc] = useState('');
+            const [saving, setSaving] = useState(false);
+            const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
+            useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
+
+            const submitIssue = async (e) => {
+                e.preventDefault(); setSaving(true);
+                try {
+                    await addDoc(getCollectionRef('issues'), {
+                        room, description: desc, reportedBy: 'admin', reportedByName: 'מנהל מערכת',
+                        status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString()
+                    });
+                    alert('התקלה דווחה ונוספה לרשימה.'); setDesc('');
+                } catch(err) { alert(err.message); } finally { setSaving(false); }
+            };
+
+            const handlePriority = async (id, priority) => { await updateDoc(getDocRef('issues', id), { priority }); };
+            const handleResolve = async (id) => { await updateDoc(getDocRef('issues', id), { status: 'done', resolvedAt: new Date().toISOString() }); };
+
+            const getPriorityColor = (p) => {
+                if(p === 'דחופה') return 'text-red-400 bg-red-400/10 border-red-400/30';
+                if(p === 'רגילה') return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
+                return 'text-green-400 bg-green-400/10 border-green-400/30';
+            };
+
+            return (
+                <div className="space-y-6">
+                    <Card title="דיווח על תקלה חדשה (מנהל)">
+                        <form onSubmit={submitIssue} className="flex gap-4 items-end">
+                            <div className="flex-1"><label className="text-sm opacity-70">חדר</label><select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>{roomList.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                            <div className="flex-[3]"><label className="text-sm opacity-70">תיאור התקלה</label><input type="text" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={desc} onChange={e=>setDesc(e.target.value)} required placeholder="מה נשבר / לא עובד?"/></div>
+                            <Button type="submit" variant="primary" disabled={saving}>{saving ? 'שולח...' : 'הוסף תקלה'}</Button>
+                        </form>
+                    </Card>
+
+                    <Card title="תקלות בטיפול (פתוחות)">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right text-sm">
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>זמן דיווח</th><th>חדר</th><th>תיאור התקלה</th><th>מדווח</th><th>עדיפות לטיפול</th><th>פעולות</th></tr></thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {pendingIssues.length === 0 && <tr><td colSpan="6" className="text-center py-6 opacity-60">החדרים במצב מושלם! אין תקלות פתוחות.</td></tr>}
+                                    {pendingIssues.map(i => (
+                                        <tr key={i.id} className="hover:bg-white/5">
+                                            <td className="py-3 text-xs opacity-70">{formatDateTimeIL(i.reportedAt)}</td>
+                                            <td className="font-bold">{i.room}</td>
+                                            <td className="max-w-xs whitespace-normal">{i.description}</td>
+                                            <td className="opacity-80">{i.reportedByName}</td>
+                                            <td>
+                                                <select className={`border rounded p-1 text-xs outline-none focus:ring-1 ${getPriorityColor(i.priority)}`} value={i.priority} onChange={(e)=>handlePriority(i.id, e.target.value)}>
+                                                    <option value="נמוכה" className="bg-gray-800 text-white">נמוכה</option><option value="רגילה" className="bg-gray-800 text-white">רגילה</option><option value="דחופה" className="bg-gray-800 text-white">דחופה</option>
+                                                </select>
+                                            </td>
+                                            <td className="flex items-center gap-2 py-2">
+                                                <Button size="sm" variant="success" onClick={()=>handleResolve(i.id)}>טופל <Check size={14}/></Button>
+                                                <button onClick={()=>confirm("למחוק דיווח?") && deleteDoc(getDocRef('issues', i.id))} className="text-red-400 p-2"><Trash2 size={16}/></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+
+                    <Card title="היסטוריית תקלות שטופלו">
+                        <div className="overflow-x-auto opacity-70">
+                            <table className="w-full text-right text-sm">
+                                <thead className="border-b border-gray-700"><tr><th>זמן דיווח</th><th>חדר</th><th>תיאור התקלה</th><th>מדווח</th><th>זמן טיפול סופי</th></tr></thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {doneIssues.length === 0 && <tr><td colSpan="5" className="text-center py-4">אין תקלות שטופלו עדיין.</td></tr>}
+                                    {doneIssues.map(i => (
+                                        <tr key={i.id}>
+                                            <td className="py-2 text-xs">{formatDateTimeIL(i.reportedAt)}</td>
+                                            <td>{i.room}</td><td className="line-through">{i.description}</td><td>{i.reportedByName}</td>
+                                            <td className="text-xs">{formatDateTimeIL(i.resolvedAt)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+                </div>
+            );
+        };
+
         const AdminEmployees = ({ employees }) => {
             const [open, setOpen] = useState(false);
             const [edit, setEdit] = useState(null);
@@ -1135,7 +1224,6 @@
             const [isBlocking, setIsBlocking] = useState(false); 
             const [tor4youSlotsMap, setTor4youSlotsMap] = useState({});
             const [loadingSlots, setLoadingSlots] = useState(false);
-            const [actionLog, setActionLog] = useState(null); // סעיף 1: נשמור את התשובה להצגה כהודעה ברורה
 
             const todayStr = new Date().toISOString().slice(0, 10);
             const currentMonthStr = todayStr.slice(0, 7);
@@ -1167,7 +1255,7 @@
 
             useEffect(() => {
                 const fetchWeekSlots = async () => {
-                    setLoadingSlots(true); setActionLog(null);
+                    setLoadingSlots(true);
                     const fromDateStr = days[0].toISOString().slice(0,10).replace(/-/g, '');
                     const toDateStr = days[6].toISOString().slice(0,10).replace(/-/g, '');
                     try {
@@ -1206,66 +1294,58 @@
                 return count;
             };
             
-            const handleStatus = async (id, status) => { await updateDoc(getDocRef('constraints', id), { status }); };
+            const handleStatus = async (id, status) => { 
+                await updateDoc(getDocRef('constraints', id), { status }); 
 
-            const handleSyncAndBlock = async () => {
-                const toDelete = [];
-                const warnings = [];
+                // סריקה אוטומטית רק במקרה של אישור
+                if (status === 'approved') {
+                    const updatedConstraints = constraints.map(x => x.id === id ? { ...x, status: 'approved' } : x);
+                    const toDelete = [];
+                    const warnings = [];
 
-                days.forEach(d => {
-                    const dStr = d.toISOString().slice(0,10);
-                    const daySlots = tor4youSlotsMap[dStr] || [];
-                    
-                    daySlots.forEach(slot => {
-                        if (getStatus(d, slot.time) === 0) {
-                            if (slot.participants > 0) {
-                                warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
-                            } else {
-                                toDelete.push({ slotid: slot.id, vfib: slot.vfib });
-                            }
-                        }
-                    });
-                });
-
-                if (warnings.length === 0 && toDelete.length === 0) {
-                    return alert('✅ היומן תקין לחלוטין! אין משבצות של 0 עובדים בשבוע המוצג.');
-                }
-
-                let message = `סריקת יומן הושלמה:\n\n`;
-                if (warnings.length > 0) {
-                    message += `🚨 שימו לב: ${warnings.length} תורים כבר הוזמנו בשעות שאין להן עובד!\n(הן לא יימחקו, חובה ליצור קשר עם הלקוח)\n`;
-                }
-                if (toDelete.length > 0) {
-                    message += `\n🗑️ נמצאו ${toDelete.length} משבצות זמן ריקות לחלוטין (ללא עובדים וללא הזמנות).\n\nהאם למחוק ולחסום אותן כעת באתר Tor4You?`;
-                } else {
-                    return alert(message);
-                }
-
-                if (confirm(message)) {
-                    setIsBlocking(true);
-                    setActionLog(null);
-                    try {
-                        const res = await fetch(TOR4YOU_DELETE_URL, { 
-                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: toDelete }) 
-                        });
-                        const data = await res.json();
+                    days.forEach(d => {
+                        const dStr = d.toISOString().slice(0,10);
+                        const daySlots = tor4youSlotsMap[dStr] || [];
                         
-                        if (data.success) {
-                            let msg = `✅ נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`;
-                            if(data.errors && data.errors.length > 0) {
-                                msg += `\n⚠️ התרחשה שגיאה בעת ניסיון מחיקת ${data.errors.length} תורים נוספים.`;
-                                console.error("Tor4You API Errors:", data.errors);
+                        daySlots.forEach(slot => {
+                            if (getStatus(d, slot.time, updatedConstraints) === 0) {
+                                if (slot.participants > 0) {
+                                    warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
+                                } else {
+                                    toDelete.push({ slotid: slot.id, vfib: slot.vfib });
+                                }
                             }
-                            alert(msg);
-                            setOffset(p=>p); // ריענון יומן
-                        } else {
-                            alert(`❌ שגיאה מהשרת: ${data.error}`);
-                            console.error(data.error);
-                        }
-                    } catch (e) { 
-                        alert('שגיאת תקשורת: ' + e.message); 
-                    } 
-                    finally { setIsBlocking(false); }
+                        });
+                    });
+
+                    if (warnings.length === 0 && toDelete.length === 0) return; // הכל תקין, אין חסימות
+
+                    let message = `זיהוי אוטומטי בעקבות אישור האילוץ:\n\n`;
+                    if (warnings.length > 0) {
+                        message += `🚨 שימו לב: ${warnings.length} תורים כבר הוזמנו בשעות שאין להן עובד כעת!\n(לא נמחקו, חובה ליצור קשר עם הלקוחות)\n`;
+                    }
+                    if (toDelete.length > 0) {
+                        message += `\n🗑️ נמצאו ${toDelete.length} תורים פנויים באתר שנותרו ללא אף מפעיל.\n\nהאם למחוק ולחסום אותם כעת ב-Tor4You?`;
+                    } else {
+                        return alert(message);
+                    }
+
+                    if (confirm(message)) {
+                        setIsBlocking(true);
+                        try {
+                            const res = await fetch(TOR4YOU_DELETE_URL, { 
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: toDelete }) 
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                                let msg = `✅ נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`;
+                                if(data.errors && data.errors.length > 0) msg += `\n⚠️ שגיאה במחיקת ${data.errors.length} תורים נוספים.`;
+                                alert(msg);
+                                setOffset(p=>p); // ריענון יומן
+                            } else alert(`❌ שגיאה מהשרת: ${data.error}`);
+                        } catch (e) { alert('שגיאת תקשורת: ' + e.message); } 
+                        finally { setIsBlocking(false); }
+                    }
                 }
             };
 
@@ -1296,7 +1376,6 @@
                     <Card title="מפת זמינות (סלוטים מדויקים של Tor4You / משך תור: 90 דק')">
                         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                             <div className="flex items-center gap-4"><Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button><span className="flex items-center gap-2 font-bold text-lg">{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())} {loadingSlots && <Loader className="w-4 h-4 animate-spin text-indigo-400"/>}</span><Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button></div>
-                            <Button onClick={handleSyncAndBlock} variant="outline" className="bg-yellow-500/10 border-yellow-500 text-yellow-500 hover:bg-yellow-500/20"><AlertTriangle size={18}/> סריקת התנגשויות וסנכרון יומן</Button>
                         </div>
                         <div className="overflow-x-auto"><div className="min-w-[800px]"><div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold text-dynamic"><div className="bg-gray-800 p-2 rounded">שעה</div>{days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm rounded">{d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'})}</div>)}</div>
                             {dynamicHours.map(h => {
