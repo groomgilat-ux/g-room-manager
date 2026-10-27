@@ -53,7 +53,7 @@
         import { createRoot } from 'react-dom/client';
         import { 
             User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, 
-            FileText, Mail, CheckCircle, XCircle, Lock, 
+            FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, Activity,
             X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell
         } from 'lucide-react';
 
@@ -77,7 +77,7 @@
         
         // --- Endpoints ---
         const TOR4YOU_FUNCTION_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouAppts";
-        const TOR4YOU_MANAGE_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/manageTor4YouSlots";
+        const TOR4YOU_DELETE_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/deleteTor4YouSlots";
         const TOR4YOU_WEEK_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net/getTor4YouWeekSlots";
 
         const getCollectionRef = (name) => collection(db, name);
@@ -359,7 +359,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.3 - פילוח גרפים חכם ויומן 30 דקות</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.4 - תיקוני אישורים וסנכרון תור חכם</div>
                     </div>
                 </div>
             );
@@ -495,11 +495,11 @@
                         if(emp) wageAtTime = emp.wagePerGame || 0;
                     }
                     
-                    // סעיף 1: מנהל מערכת שמדווח - המשמרת תאושר אוטומטית מיד ללא צורך בהמתנה!
-                    const shiftStatus = isAdmin ? 'approved' : 'pending';
+                    // תיקון סעיף 1: כל דיווח יופיע בדוחות השכר. דיווח ע"י מנהל לא דורש אישור. 
+                    const isApproved = isAdmin;
                     await timeoutPromise(addDoc(getCollectionRef('shifts'), { 
                         employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, 
-                        status: shiftStatus, approved: isAdmin, wageAtTime, isAutoGroup: true 
+                        status: isApproved ? 'approved' : 'pending', approved: isApproved, wageAtTime, isAutoGroup: true 
                     }), 4000);
                     
                     alert('קבוצה ומשמרת נשמרו בהצלחה!'); onSave();
@@ -673,7 +673,7 @@
             const [tab, setTab] = useState('groups');
             const pendingReq = (data.requests || []).filter(r => r.status === 'pending');
             const pendingCons = (data.constraints || []).filter(c => c.status === 'pending');
-            const pendingShifts = (data.shifts || []).filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
+            const pendingShifts = (data.shifts || []).filter(s => s.status === 'pending');
             
             return (
                 <div className="space-y-6">
@@ -752,12 +752,23 @@
                                         <th className="px-2 font-semibold text-center">חשבונית</th>
                                         <th className="px-2 font-semibold">שחקנים</th>
                                         <th className="px-2 font-semibold text-green-400">סה"כ לקופה</th>
+                                        {/* סעיף 2: עמודת אמצעי תשלום חזרה */}
+                                        <th className="px-2 font-semibold">אמצעי תשלום</th>
                                         <th className="px-2 font-semibold">מחיקה</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-800 text-dynamic">
-                                    {filteredAndSortedGroups.length === 0 && <tr><td colSpan="8" className="text-center py-6 opacity-60">לא נמצאו דיווחים</td></tr>}
-                                    {filteredAndSortedGroups.map(g => (
+                                    {filteredAndSortedGroups.length === 0 && <tr><td colSpan="9" className="text-center py-6 opacity-60">לא נמצאו דיווחים</td></tr>}
+                                    {filteredAndSortedGroups.map(g => {
+                                        const activePays = [];
+                                        if (Number(g.payments?.cash)>0) activePays.push('מזומן');
+                                        if (Number(g.payments?.credit)>0) activePays.push('אשראי');
+                                        if (Number(g.payments?.bit)>0) activePays.push('ביט');
+                                        if (Number(g.payments?.transfer)>0) activePays.push('העברה');
+                                        if (g.hasMegaLaan) activePays.push('מגה לאן');
+                                        const payDisplay = activePays.length > 1 ? 'משולב' : (activePays[0] || 'ללא');
+
+                                        return (
                                         <tr key={g.id} className="hover:bg-indigo-900/30 cursor-pointer transition-colors" onClick={() => setViewingGroup(g)}>
                                             <td className="py-3 px-2 font-medium">{formatDateIL(g.date)} {g.time}</td>
                                             <td className="px-2 opacity-80">{g.employeeId === 'admin' ? 'מנהל' : (employees.find(e => e.id === g.employeeId)?.name || '')}</td>
@@ -766,9 +777,10 @@
                                             <td className="px-2 text-center opacity-70">{g.invoiceNumber || '-'}</td>
                                             <td className="px-2">{g.totalPlayers}</td>
                                             <td className="px-2 font-bold text-green-400">₪{g.finalPriceToPay}</td>
+                                            <td className="px-2 font-medium text-indigo-300">{payDisplay}</td>
                                             <td className="px-2"><button onClick={(e) => { e.stopPropagation(); confirm("למחוק דיווח?") && deleteDoc(getDocRef('groups', g.id)); }} className="text-red-400 hover:bg-red-900/30 p-1 rounded"><Trash2 size={16}/></button></td>
                                         </tr>
-                                    ))}
+                                    )})}
                                 </tbody>
                             </table>
                         </div>
@@ -786,17 +798,15 @@
             
             const [expName, setExpName] = useState('');
             const [expCategory, setExpCategory] = useState('שכירות');
-            const [customCategory, setCustomCategory] = useState(''); // סעיף 2: קטגוריה חופשית
+            const [customCategory, setCustomCategory] = useState(''); 
             const [expAmount, setExpAmount] = useState('');
             const [expFrom, setExpFrom] = useState(month);
             const [expTo, setExpTo] = useState(month);
             const [saving, setSaving] = useState(false);
 
-            // סעיף 3: הרכבת רשימת קטגוריות חכמה מתוך ההוצאות הקיימות
             const defaultCats = ['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל'];
             const dynamicCats = [...new Set([...defaultCats, ...expenses.map(e => e.category)])].filter(Boolean);
 
-            // בחירת 4 הקטגוריות הנפוצות ביותר לכפתורי השליפה המהירה
             const quickCats = useMemo(() => {
                 const counts = expenses.reduce((acc, ex) => { acc[ex.category] = (acc[ex.category]||0) + 1; return acc; }, {});
                 const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
@@ -837,7 +847,6 @@
             const totalExpenses = activeExpenses.reduce((acc, ex) => acc + ex.monthlyAmount, 0);
             const netProfit = totalRevenue - totalSalaries - totalExpenses;
 
-            // סעיף 4: חישוב לגרף פירוט הוצאות צבעוני
             const expByCategory = activeExpenses.reduce((acc, ex) => {
                 acc[ex.category] = (acc[ex.category] || 0) + ex.monthlyAmount;
                 return acc;
@@ -846,8 +855,6 @@
             const maxVal = Math.max(totalRevenue, totalSalaries + totalExpenses);
             const revPct = maxVal > 0 ? (totalRevenue / maxVal) * 100 : 0;
             const salaryPct = maxVal > 0 ? (totalSalaries / maxVal) * 100 : 0;
-            
-            // פלטת צבעים נעימה לגרף ההוצאות
             const graphColors = ['#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#6366f1'];
 
             const exportFinancialXLS = () => {
@@ -889,10 +896,7 @@
 
                     <Card title="מאזן חודשי">
                         <div className="space-y-4">
-                            <div>
-                                <div className="flex justify-between text-sm mb-1 text-green-300"><span>הכנסות</span> <span>{Math.round(revPct)}%</span></div>
-                                <div className="w-full bg-gray-800 rounded-full h-4"><div className="bg-green-500 h-4 rounded-full transition-all duration-1000" style={{width: `${revPct}%`}}></div></div>
-                            </div>
+                            <div><div className="flex justify-between text-sm mb-1 text-green-300"><span>הכנסות</span> <span>{Math.round(revPct)}%</span></div><div className="w-full bg-gray-800 rounded-full h-4"><div className="bg-green-500 h-4 rounded-full transition-all duration-1000" style={{width: `${revPct}%`}}></div></div></div>
                             <div>
                                 <div className="flex justify-between text-sm mb-1 text-red-300"><span>הוצאות ושכר פילוח צבעוני</span> <span>{Math.round((totalSalaries+totalExpenses)/maxVal*100 || 0)}%</span></div>
                                 <div className="w-full bg-gray-800 rounded-full h-4 flex overflow-hidden">
@@ -902,7 +906,6 @@
                                         return <div key={cat} style={{width: `${pct}%`, backgroundColor: graphColors[idx % graphColors.length]}} title={`${cat}: ₪${Math.round(amount)}`} className="transition-all duration-1000 border-r border-gray-900/50"></div>
                                     })}
                                 </div>
-                                {/* מקרא צבעים קטן */}
                                 <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs opacity-90">
                                     <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div>שכר עובדים (₪{Math.round(totalSalaries)})</div>
                                     {Object.entries(expByCategory).map(([cat, amount], idx) => (
@@ -941,8 +944,6 @@
                                 <h3 className="text-xl font-bold mb-4">רישום הוצאה למערכת</h3>
                                 <form onSubmit={handleAddExpense} className="space-y-4">
                                     <Input label="תיאור / שם ההוצאה" value={expName} onChange={e=>setExpName(e.target.value)} required />
-                                    
-                                    {/* סעיף 3: תיוג מהיר של קטגוריות נפוצות */}
                                     <div className="flex flex-col gap-1">
                                         <label className="text-sm opacity-70">קטגוריה</label>
                                         <div className="flex gap-2 flex-wrap mb-1">
@@ -955,10 +956,7 @@
                                             <option value="אחר">אחר (הזן קטגוריה חדשה)...</option>
                                         </select>
                                     </div>
-                                    
-                                    {/* סעיף 2: פתיחת טקסט חופשי אם נבחר "אחר" */}
                                     {expCategory === 'אחר' && <Input label="הזן שם קטגוריה חדשה" value={customCategory} onChange={e=>setCustomCategory(e.target.value)} required />}
-
                                     <Input label="סכום כולל לתשלום (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required />
                                     <div className="bg-indigo-900/20 p-3 rounded border border-indigo-500/30 text-xs">הסכום יתחלק שווה בשווה על פני החודשים שיוגדרו:</div>
                                     <div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div>
@@ -974,7 +972,8 @@
         const AdminReports = ({ employees, shifts, settings }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
             const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
-            const pendingShifts = shifts.filter(s => s.status === 'pending' || (s.status === undefined && s.approved === false));
+            // סעיף 1: מציג את כל מה ש-pending בדוחות (גם מה שהמנהל דיווח ידנית אם הוא הגדיר pending)
+            const pendingShifts = shifts.filter(s => s.status === 'pending');
 
             const report = employees.map(emp => {
                 const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id).sort((a,b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
@@ -1070,13 +1069,14 @@
             const days = useMemo(() => Array.from({length:7}, (_,i) => {
                 const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d;
             }), [offset]);
-            
-            // סעיף 5: מערך של 32 חצאי שעות - מ-08:00 ועד 23:30
-            const hours = Array.from({length:32}, (_,i) => {
-                const h = Math.floor(i/2) + 8;
-                const m = i%2 === 0 ? '00' : '30';
-                return `${h.toString().padStart(2,'0')}:${m}`;
-            });
+
+            // בניית עמודות היומן באופן דינמי רק מהשעות שמוגדרות בתור פור יו לשבוע הנוכחי
+            const dynamicHours = useMemo(() => {
+                const times = new Set();
+                Object.values(tor4youSlotsMap).forEach(arr => arr.forEach(s => times.add(s.time)));
+                if (times.size === 0) return ["10:00", "11:30", "13:00", "14:30", "16:00", "17:30", "19:00", "20:30", "22:00", "23:30"];
+                return Array.from(times).sort();
+            }, [tor4youSlotsMap]);
 
             useEffect(() => {
                 const fetchWeekSlots = async () => {
@@ -1091,14 +1091,16 @@
                 fetchWeekSlots();
             }, [offset]);
 
-            // סעיף 5: חישוב מדויק של התנגשות בחצאי שעות
+            // חישוב התנגשויות (סעיף 3). מניח שזמן משחק כולל התארגנות הוא 90 דקות
             const getStatus = (d, hStr, customConstraints = constraints) => {
                 const dStr = d.toISOString().slice(0,10);
-                const hasSlotInTor4You = tor4youSlotsMap[dStr] && tor4youSlotsMap[dStr].includes(hStr);
-                if (!hasSlotInTor4You) return -1;
+                const daySlots = tor4youSlotsMap[dStr] || [];
+                const slot = daySlots.find(s => s.time === hStr);
+                if (!slot) return -1; // לא פתוח ב-Tor4You
                 
                 const [curH, curM] = hStr.split(':').map(Number);
-                const curMin = curH * 60 + curM;
+                const slotStartMin = curH * 60 + curM;
+                const slotEndMin = slotStartMin + 90; // 90 דקות בלוק
 
                 let count = 0;
                 employees.forEach(emp => {
@@ -1108,44 +1110,68 @@
                         
                         const [sH, sM] = c.startTime.split(':').map(Number); 
                         const [eH, eM] = c.endTime.split(':').map(Number);
-                        const sMin = sH * 60 + sM;
-                        const eMin = eH * 60 + eM;
+                        const cStartMin = sH * 60 + sM;
+                        const cEndMin = eH * 60 + eM;
                         
-                        return c.date === dStr && curMin >= sMin && curMin < eMin;
+                        // בדיקת חפיפת זמנים אמיתית: מקסימום התחלות קטן ממינימום סיומים
+                        return c.date === dStr && (Math.max(slotStartMin, cStartMin) < Math.min(slotEndMin, cEndMin));
                     });
                     if (!busy) count++;
                 });
                 return count;
             };
             
-            const handleStatus = async (id, status) => {
-                const c = constraints.find(x => x.id === id);
-                await updateDoc(getDocRef('constraints', id), { status });
-                if (status === 'approved' && c.type === 'single') {
-                    const updatedConstraints = constraints.map(x => x.id === id ? { ...x, status: 'approved' } : x);
+            const handleStatus = async (id, status) => { await updateDoc(getDocRef('constraints', id), { status }); };
+
+            // סעיף 4: פונקציית סנכרון יומן מלאה מול Tor4You
+            const handleSyncAndBlock = async () => {
+                const toDelete = [];
+                const warnings = [];
+
+                days.forEach(d => {
+                    const dStr = d.toISOString().slice(0,10);
+                    const daySlots = tor4youSlotsMap[dStr] || [];
                     
-                    const [sH, sM] = c.startTime.split(':').map(Number); 
-                    const [eH, eM] = c.endTime.split(':').map(Number);
-                    const startMin = sH * 60 + sM;
-                    const endMin = eH * 60 + eM;
-                    const checkDate = new Date(c.date);
-                    
-                    let hasZero = false;
-                    for (let m = startMin; m < endMin; m += 30) { 
-                        const hStr = `${Math.floor(m/60).toString().padStart(2,'0')}:${m%60===0?'00':'30'}`;
-                        if (getStatus(checkDate, hStr, updatedConstraints) === 0) hasZero = true; 
-                    }
-                    
-                    if (hasZero) {
-                        if (confirm(`⚠️ אישור אילוץ זה משאיר 0 עובדים זמינים למשבצות שפתוחות ב-Tor4You בשעות ${c.startTime}-${c.endTime}.\nלסרוק ולנעול אוטומטית משבצות ריקות באתר?`)) {
-                            setIsBlocking(true);
-                            try {
-                                const res = await fetch(TOR4YOU_MANAGE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: c.date, startTime: c.startTime, endTime: c.endTime }) });
-                                const data = await res.json();
-                                if (data.hasBookings) alert(`🚨 ${data.message}`); else if (data.success) alert(`✅ ${data.message}`); else alert(`❌ שגיאה: ${data.error}`);
-                            } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setIsBlocking(false); }
+                    daySlots.forEach(slot => {
+                        // אם יש 0 עובדים פנויים במשבצת הזו
+                        if (getStatus(d, slot.time) === 0) {
+                            if (slot.participants > 0) {
+                                warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
+                            } else {
+                                toDelete.push({ slotid: slot.id, vfib: slot.vfib });
+                            }
                         }
-                    }
+                    });
+                });
+
+                if (warnings.length === 0 && toDelete.length === 0) {
+                    return alert('היומן תקין! אין משבצות של 0 עובדים בשבוע המוצג.');
+                }
+
+                let message = `סריקת יומן הושלמה:\n\n`;
+                if (warnings.length > 0) {
+                    message += `🚨 ${warnings.length} תורים כבר הוזמנו בשעות שאין להם עובד!\n(לא יימחקו, חובה ליצור קשר עם הלקוח)\n`;
+                }
+                if (toDelete.length > 0) {
+                    message += `\n🗑️ נמצאו ${toDelete.length} תורים ריקים באוויר ללא אף מפעיל.\nהאם למחוק ולחסום אותם כעת באתר Tor4You?`;
+                } else {
+                    return alert(message); // רק אזהרות
+                }
+
+                if (confirm(message)) {
+                    setIsBlocking(true);
+                    try {
+                        const res = await fetch(TOR4YOU_DELETE_URL, { 
+                            method: 'POST', 
+                            headers: { 'Content-Type': 'application/json' }, 
+                            body: JSON.stringify({ slots: toDelete }) 
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            alert(`✅ נמחקו בהצלחה ${data.deletedCount} תורים מהאתר.`);
+                        } else alert(`❌ שגיאה מהשרת: ${data.error}`);
+                    } catch (e) { alert('שגיאת תקשורת: ' + e.message); } 
+                    finally { setIsBlocking(false); }
                 }
             };
 
@@ -1154,23 +1180,26 @@
             return (
                 <div className="space-y-6 relative">
                     {isBlocking && (
-                        <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center rounded-xl backdrop-blur-sm"><div className="bg-gray-900 p-6 rounded-xl border border-indigo-500 shadow-2xl flex flex-col items-center gap-4"><Loader className="animate-spin w-10 h-10 text-indigo-500" /><span className="text-lg font-bold text-white">סורק ומעדכן את היומן...</span></div></div>
+                        <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center rounded-xl backdrop-blur-sm"><div className="bg-gray-900 p-6 rounded-xl border border-indigo-500 shadow-2xl flex flex-col items-center gap-4"><Loader className="animate-spin w-10 h-10 text-indigo-500" /><span className="text-lg font-bold text-white">מעדכן וחוסם תורים ב-Tor4You...</span></div></div>
                     )}
                     <Card title="רשימת אילוצים">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm"><thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>התחלה</th><th>סיום</th><th>שעות</th><th>סיבה</th><th>סטטוס</th><th>פעולות</th></tr></thead><tbody className="text-dynamic opacity-90">
                                 {sortedConstraints.map(c => {
                                     const emp = employees.find(e => e.id === c.employeeId);
-                                    return <tr key={c.id} className="border-b border-gray-800 hover:bg-white/5"><td className="py-2 font-bold">{emp?.name}</td><td>{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td>{c.note}</td><td><StatusBadge status={c.status || 'pending'}/></td><td className="flex gap-2 py-1">{c.status === 'pending' && <><Button size="sm" variant="success" onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant="danger" onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button></>}<button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button></td></tr>
+                                    return <tr key={c.id} className="border-b border-gray-800 hover:bg-white/5"><td className="py-2 font-bold">{emp?.name}</td><td>{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td>{c.note}</td><td><StatusBadge status={c.status || 'pending'}/></td><td className="flex gap-2 py-1"><Button size="sm" variant={c.status==='approved'?"secondary":"success"} onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant={c.status==='rejected'?"secondary":"danger"} onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button><button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button></td></tr>
                                 })}
                             </tbody></table>
                         </div>
                     </Card>
-                    <Card title="מפת זמינות (מרווחים של 30 דקות לפי Tor4You)">
-                        <div className="flex justify-between items-center mb-4"><Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button><span className="flex items-center gap-2">{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())} {loadingSlots && <Loader className="w-4 h-4 animate-spin text-indigo-400"/>}</span><Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button></div>
+                    <Card title="מפת זמינות (חופפת ל-Tor4You / משך תור: 90 דק')">
+                        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                            <div className="flex items-center gap-4"><Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button><span className="flex items-center gap-2 font-bold text-lg">{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())} {loadingSlots && <Loader className="w-4 h-4 animate-spin text-indigo-400"/>}</span><Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button></div>
+                            <Button onClick={handleSyncAndBlock} variant="outline" className="bg-yellow-500/10 border-yellow-500 text-yellow-500 hover:bg-yellow-500/20"><AlertTriangle size={18}/> סריקת התנגשויות וסנכרון יומן</Button>
+                        </div>
                         <div className="overflow-x-auto"><div className="min-w-[800px]"><div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold text-dynamic"><div className="bg-gray-800 p-2 rounded">שעה</div>{days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm rounded">{d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'})}</div>)}</div>
-                            {hours.map(h => (
-                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs"><div className="bg-gray-800 p-2 rounded text-dynamic">{h}</div>
+                            {dynamicHours.map(h => (
+                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs"><div className="bg-gray-800 p-2 rounded text-dynamic font-bold">{h}</div>
                                     {days.map((d,i) => {
                                         const stat = getStatus(d, h);
                                         let bg = 'bg-green-900/60';
