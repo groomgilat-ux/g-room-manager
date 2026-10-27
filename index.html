@@ -54,7 +54,7 @@
         import { 
             User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, 
             FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, Activity,
-            X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench
+            X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History
         } from 'lucide-react';
 
         import { initializeApp } from 'firebase/app';
@@ -365,7 +365,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.5 - מודול תקלות חדרים וזמינות מותאמת</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.6 - אילוצים וניהול הוצאות</div>
                     </div>
                 </div>
             );
@@ -501,14 +501,13 @@
                         if(emp) wageAtTime = emp.wagePerGame || 0;
                     }
                     
-                    // תיקון סעיף 1: כל דיווח, גם אם ע"י מנהל, נכנס כ-pending לדוחות השכר
+                    // תמיד נכנס כ-pending לאישור בדוחות שכר
                     await timeoutPromise(addDoc(getCollectionRef('shifts'), { 
                         employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, 
                         status: 'pending', approved: false, wageAtTime, isAutoGroup: true 
                     }), 4000);
                     
-                    alert('קבוצה ומשמרת נשמרו בהצלחה!'); 
-                    onSave();
+                    alert('קבוצה ומשמרת נשמרו בהצלחה!'); onSave();
                 } catch(err) { alert(err.message === 'Timeout' ? 'נשמר בענן (איטי)' : err.message); onSave(); } 
                 finally { setSaving(false); }
             };
@@ -675,6 +674,64 @@
             );
         };
 
+        const EditExpenseModal = ({ expense, onClose, expenses }) => {
+            const [expName, setExpName] = useState(expense.name);
+            const [expCategory, setExpCategory] = useState(expense.category);
+            const [customCategory, setCustomCategory] = useState(''); 
+            const [expAmount, setExpAmount] = useState(expense.totalAmount);
+            const [expFrom, setExpFrom] = useState(expense.fromMonth);
+            const [expTo, setExpTo] = useState(expense.toMonth);
+            const [expInvoice, setExpInvoice] = useState(expense.invoiceNumber || '');
+            const [saving, setSaving] = useState(false);
+
+            const defaultCats = ['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל'];
+            const dynamicCats = [...new Set([...defaultCats, ...expenses.map(e => e.category)])].filter(Boolean);
+
+            const handleSave = async (e) => {
+                e.preventDefault();
+                if (expFrom > expTo) return alert('חודש הסיום לא יכול להיות לפני חודש ההתחלה');
+                const finalCategory = expCategory === 'אחר' ? customCategory : expCategory;
+                if (!finalCategory) return alert('נא להזין קטגוריה');
+
+                setSaving(true);
+                const monthsCount = getMonthsDifference(expFrom, expTo);
+                const monthlyRatio = Number(expAmount) / monthsCount;
+                try {
+                    await updateDoc(getDocRef('expenses', expense.id), {
+                        name: expName, category: finalCategory, totalAmount: Number(expAmount),
+                        fromMonth: expFrom, toMonth: expTo, monthlyAmount: monthlyRatio, invoiceNumber: expInvoice
+                    });
+                    onClose();
+                } catch(err) { alert(err.message); setSaving(false); }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 fade-in" onClick={onClose}>
+                    <div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3">
+                            <h3 className="text-xl font-bold">עריכת הוצאה</h3>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white"><XIcon size={20}/></button>
+                        </div>
+                        <form onSubmit={handleSave} className="space-y-4">
+                            <Input label="תיאור ההוצאה" value={expName} onChange={e=>setExpName(e.target.value)} required />
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm opacity-70">קטגוריה</label>
+                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={expCategory} onChange={e=>setExpCategory(e.target.value)}>
+                                    {dynamicCats.map(c => <option key={c} value={c}>{c}</option>)}
+                                    <option value="אחר">אחר (הזן קטגוריה חדשה)...</option>
+                                </select>
+                            </div>
+                            {expCategory === 'אחר' && <Input label="קטגוריה חדשה" value={customCategory} onChange={e=>setCustomCategory(e.target.value)} required />}
+                            <Input label="מספר חשבונית/קבלה" value={expInvoice} onChange={e=>setExpInvoice(e.target.value)} />
+                            <Input label="סכום כולל לתשלום (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required />
+                            <div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div>
+                            <Button type="submit" disabled={saving} className="w-full mt-4">{saving?'שומר...':'שמור עדכונים'}</Button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
         const AdminDashboard = ({ data, settings }) => {
             const [tab, setTab] = useState('groups');
             const pendingReq = (data.requests || []).filter(r => r.status === 'pending');
@@ -804,6 +861,7 @@
         const AdminExpenses = ({ expenses, groups, shifts, employees }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
             const [showForm, setShowForm] = useState(false);
+            const [editingExpense, setEditingExpense] = useState(null);
             
             const [expName, setExpName] = useState('');
             const [expCategory, setExpCategory] = useState('שכירות');
@@ -811,6 +869,7 @@
             const [expAmount, setExpAmount] = useState('');
             const [expFrom, setExpFrom] = useState(month);
             const [expTo, setExpTo] = useState(month);
+            const [expInvoice, setExpInvoice] = useState('');
             const [saving, setSaving] = useState(false);
 
             const defaultCats = ['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל'];
@@ -835,9 +894,9 @@
                     await addDoc(getCollectionRef('expenses'), {
                         name: expName, category: finalCategory, totalAmount: Number(expAmount),
                         fromMonth: expFrom, toMonth: expTo, monthlyAmount: monthlyRatio,
-                        createdAt: new Date().toISOString()
+                        invoiceNumber: expInvoice, createdAt: new Date().toISOString()
                     });
-                    setShowForm(false); setExpName(''); setExpAmount(''); setCustomCategory('');
+                    setShowForm(false); setExpName(''); setExpAmount(''); setCustomCategory(''); setExpInvoice('');
                 } catch(err) { alert(err.message); } finally { setSaving(false); }
             };
 
@@ -875,9 +934,9 @@
                     <tr><td>הוצאות תפעול שוטפות</td><td>-₪${totalExpenses.toFixed(2)}</td></tr>
                     <tr style="background-color:#86efac;font-weight:bold;font-size:16px;"><td>רווח נקי לחודש זה</td><td>₪${netProfit.toFixed(2)}</td></tr>
                     <tr><td colspan="2" style="height:20px;"></td></tr>
-                    <tr style="background-color:#e2e8f0;font-weight:bold;"><td>פירוט הוצאות החודש</td><td>קטגוריה</td><td>סכום יחסי לחודש</td><td>תקופה מלאה</td></tr>`;
+                    <tr style="background-color:#e2e8f0;font-weight:bold;"><td>פירוט הוצאות החודש</td><td>קטגוריה</td><td>חשבונית</td><td>סכום יחסי לחודש</td><td>תקופה מלאה</td></tr>`;
                 activeExpenses.forEach(ex => {
-                    html += `<tr><td>${ex.name}</td><td>${ex.category}</td><td>₪${ex.monthlyAmount.toFixed(2)}</td><td>${ex.fromMonth} עד ${ex.toMonth} (סה"כ ₪${ex.totalAmount})</td></tr>`;
+                    html += `<tr><td>${ex.name}</td><td>${ex.category}</td><td style="mso-number-format:'\@';">${ex.invoiceNumber || ''}</td><td>₪${ex.monthlyAmount.toFixed(2)}</td><td>${ex.fromMonth} עד ${ex.toMonth} (סה"כ ₪${ex.totalAmount})</td></tr>`;
                 });
                 html += `</table></body></html>`;
                 exportToXLS(html, `Financial_Report_${month}.xls`);
@@ -927,19 +986,20 @@
 
                     <Card title="פירוט הוצאות (משויכות לחודש זה)">
                         <div className="overflow-x-auto">
-                            <table className="w-full text-right text-sm">
-                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תיאור ההוצאה</th><th>קטגוריה</th><th>סכום כולל</th><th>תקופת חיוב</th><th>חלק יחסי לחודש זה</th><th>מחק</th></tr></thead>
+                            <table className="w-full text-right text-sm whitespace-nowrap">
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>תיאור ההוצאה</th><th>קטגוריה</th><th>חשבונית</th><th>סכום כולל</th><th>תקופת חיוב</th><th>יחסי לחודש</th><th>מחק</th></tr></thead>
                                 <tbody className="divide-y divide-gray-800">
-                                    {activeExpenses.length === 0 && <tr><td colSpan="6" className="text-center py-4">אין הוצאות מתועדות לחודש זה</td></tr>}
+                                    {activeExpenses.length === 0 && <tr><td colSpan="7" className="text-center py-4">אין הוצאות מתועדות לחודש זה</td></tr>}
                                     {activeExpenses.map((ex, idx) => {
                                         const catIndex = Object.keys(expByCategory).indexOf(ex.category);
                                         const dotColor = graphColors[catIndex % graphColors.length];
                                         return (
-                                        <tr key={ex.id} className="hover:bg-white/5">
+                                        <tr key={ex.id} className="hover:bg-indigo-900/30 cursor-pointer transition-colors" onClick={()=>setEditingExpense(ex)}>
                                             <td className="py-2 font-bold">{ex.name}</td>
                                             <td className="flex items-center gap-2 mt-2"><div className="w-2 h-2 rounded-full" style={{backgroundColor: dotColor}}></div>{ex.category}</td>
+                                            <td className="opacity-70">{ex.invoiceNumber || '-'}</td>
                                             <td>₪{ex.totalAmount}</td><td className="text-xs opacity-70">{ex.fromMonth} עד {ex.toMonth}</td><td className="font-bold text-orange-400">₪{ex.monthlyAmount.toFixed(1)}</td>
-                                            <td><button onClick={() => confirm("למחוק הוצאה?") && deleteDoc(getDocRef('expenses', ex.id))} className="text-red-400"><Trash2 size={14}/></button></td>
+                                            <td><button onClick={(e) => { e.stopPropagation(); confirm("למחוק הוצאה?") && deleteDoc(getDocRef('expenses', ex.id)); }} className="text-red-400 hover:bg-red-900/30 p-1 rounded"><Trash2 size={14}/></button></td>
                                         </tr>
                                     )})}
                                 </tbody>
@@ -966,6 +1026,7 @@
                                         </select>
                                     </div>
                                     {expCategory === 'אחר' && <Input label="הזן שם קטגוריה חדשה" value={customCategory} onChange={e=>setCustomCategory(e.target.value)} required />}
+                                    <Input label="מספר חשבונית/קבלה" value={expInvoice} onChange={e=>setExpInvoice(e.target.value)} />
                                     <Input label="סכום כולל לתשלום (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required />
                                     <div className="bg-indigo-900/20 p-3 rounded border border-indigo-500/30 text-xs">הסכום יתחלק שווה בשווה על פני החודשים שיוגדרו:</div>
                                     <div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div>
@@ -974,6 +1035,66 @@
                             </div>
                         </div>
                     )}
+                    
+                    {editingExpense && <EditExpenseModal expense={editingExpense} expenses={expenses} onClose={()=>setEditingExpense(null)} />}
+                </div>
+            );
+        };
+
+        const EditExpenseModal = ({ expense, onClose, expenses }) => {
+            const [expName, setExpName] = useState(expense.name);
+            const [expCategory, setExpCategory] = useState(expense.category);
+            const [customCategory, setCustomCategory] = useState(''); 
+            const [expAmount, setExpAmount] = useState(expense.totalAmount);
+            const [expFrom, setExpFrom] = useState(expense.fromMonth);
+            const [expTo, setExpTo] = useState(expense.toMonth);
+            const [expInvoice, setExpInvoice] = useState(expense.invoiceNumber || '');
+            const [saving, setSaving] = useState(false);
+
+            const defaultCats = ['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל'];
+            const dynamicCats = [...new Set([...defaultCats, ...expenses.map(e => e.category)])].filter(Boolean);
+
+            const handleSave = async (e) => {
+                e.preventDefault();
+                if (expFrom > expTo) return alert('חודש הסיום לא יכול להיות לפני חודש ההתחלה');
+                const finalCategory = expCategory === 'אחר' ? customCategory : expCategory;
+                if (!finalCategory) return alert('נא להזין קטגוריה');
+
+                setSaving(true);
+                const monthsCount = getMonthsDifference(expFrom, expTo);
+                const monthlyRatio = Number(expAmount) / monthsCount;
+                try {
+                    await updateDoc(getDocRef('expenses', expense.id), {
+                        name: expName, category: finalCategory, totalAmount: Number(expAmount),
+                        fromMonth: expFrom, toMonth: expTo, monthlyAmount: monthlyRatio, invoiceNumber: expInvoice
+                    });
+                    onClose();
+                } catch(err) { alert(err.message); setSaving(false); }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 fade-in" onClick={onClose}>
+                    <div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3">
+                            <h3 className="text-xl font-bold">עריכת הוצאה</h3>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white"><XIcon size={20}/></button>
+                        </div>
+                        <form onSubmit={handleSave} className="space-y-4">
+                            <Input label="תיאור / שם ההוצאה" value={expName} onChange={e=>setExpName(e.target.value)} required />
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm opacity-70">קטגוריה</label>
+                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={expCategory} onChange={e=>setExpCategory(e.target.value)}>
+                                    {dynamicCats.map(c => <option key={c} value={c}>{c}</option>)}
+                                    <option value="אחר">אחר (הזן קטגוריה חדשה)...</option>
+                                </select>
+                            </div>
+                            {expCategory === 'אחר' && <Input label="קטגוריה חדשה" value={customCategory} onChange={e=>setCustomCategory(e.target.value)} required />}
+                            <Input label="מספר חשבונית/קבלה" value={expInvoice} onChange={e=>setExpInvoice(e.target.value)} />
+                            <Input label="סכום כולל לתשלום (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required />
+                            <div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div>
+                            <Button type="submit" disabled={saving} className="w-full mt-4">{saving?'מעדכן...':'שמור שינויים'}</Button>
+                        </form>
+                    </div>
                 </div>
             );
         };
@@ -981,7 +1102,6 @@
         const AdminReports = ({ employees, shifts, settings }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
             const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
-            // עכשיו Pending מושך גם תורים שהוזנו ע"י העובדים וגם תורים שהוזנו ע"י מנהל (שנכנסים עכשיו כ-pending כברירת מחדל)
             const pendingShifts = shifts.filter(s => s.status === 'pending');
 
             const report = employees.map(emp => {
@@ -1052,6 +1172,24 @@
             const pendingIssues = issues.filter(i => i.status === 'pending').sort((a,b) => new Date(a.reportedAt) - new Date(b.reportedAt));
             const doneIssues = issues.filter(i => i.status === 'done').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
 
+            // דיווח מהיר למנהל
+            const [room, setRoom] = useState('');
+            const [desc, setDesc] = useState('');
+            const [saving, setSaving] = useState(false);
+            const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
+            useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
+
+            const submitIssue = async (e) => {
+                e.preventDefault(); setSaving(true);
+                try {
+                    await addDoc(getCollectionRef('issues'), {
+                        room, description: desc, reportedBy: 'admin', reportedByName: 'מנהל מערכת',
+                        status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString()
+                    });
+                    alert('התקלה דווחה ונוספה לרשימה.'); setDesc('');
+                } catch(err) { alert(err.message); } finally { setSaving(false); }
+            };
+
             const handlePriority = async (id, priority) => { await updateDoc(getDocRef('issues', id), { priority }); };
             const handleResolve = async (id) => { await updateDoc(getDocRef('issues', id), { status: 'done', resolvedAt: new Date().toISOString() }); };
 
@@ -1063,6 +1201,14 @@
 
             return (
                 <div className="space-y-6">
+                    <Card title="דיווח על תקלה חדשה (מנהל)">
+                        <form onSubmit={submitIssue} className="flex gap-4 items-end">
+                            <div className="flex-1"><label className="text-sm opacity-70">חדר</label><select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>{roomList.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                            <div className="flex-[3]"><label className="text-sm opacity-70">תיאור התקלה</label><input type="text" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={desc} onChange={e=>setDesc(e.target.value)} required placeholder="מה נשבר / לא עובד?"/></div>
+                            <Button type="submit" variant="primary" disabled={saving}>{saving ? 'שולח...' : 'הוסף תקלה'}</Button>
+                        </form>
+                    </Card>
+
                     <Card title="תקלות בטיפול (פתוחות)">
                         <div className="overflow-x-auto">
                             <table className="w-full text-right text-sm">
@@ -1139,11 +1285,28 @@
             const [tor4youSlotsMap, setTor4youSlotsMap] = useState({});
             const [loadingSlots, setLoadingSlots] = useState(false);
 
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const currentMonthStr = todayStr.slice(0, 7);
+
+            // סעיף 2: פיצול האילוצים
+            const activeCons = useMemo(() => {
+                return constraints.filter(c => {
+                    const cDate = c.type === 'range' ? c.endDate : c.date;
+                    return cDate >= todayStr || c.status === 'pending';
+                }).sort((a, b) => (a.type==='range'?a.startDate:a.date).localeCompare(b.type==='range'?b.startDate:b.date));
+            }, [constraints]);
+
+            const historyCons = useMemo(() => {
+                return constraints.filter(c => {
+                    const cDate = c.type === 'range' ? c.endDate : c.date;
+                    return cDate < todayStr && c.status !== 'pending' && cDate.startsWith(currentMonthStr);
+                }).sort((a, b) => (b.type==='range'?b.startDate:b.date).localeCompare(a.type==='range'?a.startDate:a.date));
+            }, [constraints]);
+
             const days = useMemo(() => Array.from({length:7}, (_,i) => {
                 const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d;
             }), [offset]);
 
-            // סעיף 4: שאיבת זמנים מדויקים מתור פור יו עבור היומן
             const dynamicHours = useMemo(() => {
                 const times = new Set();
                 Object.values(tor4youSlotsMap).forEach(arr => arr.forEach(s => times.add(s.time)));
@@ -1168,11 +1331,11 @@
                 const dStr = d.toISOString().slice(0,10);
                 const daySlots = tor4youSlotsMap[dStr] || [];
                 const slot = daySlots.find(s => s.time === hStr);
-                if (!slot) return -1; // לא קיים סלוט כזה בתור פור יו היום
+                if (!slot) return -1; 
                 
                 const [curH, curM] = hStr.split(':').map(Number);
                 const slotStartMin = curH * 60 + curM;
-                const slotEndMin = slotStartMin + 90; // זמן תור כולל מרווח (לדוגמה 11:30 עד 13:00)
+                const slotEndMin = slotStartMin + 90; 
 
                 let count = 0;
                 employees.forEach(emp => {
@@ -1185,7 +1348,6 @@
                         const cStartMin = sH * 60 + sM;
                         const cEndMin = eH * 60 + eM;
                         
-                        // האם האילוץ של העובד חופף לסלוט הזה?
                         return c.date === dStr && (Math.max(slotStartMin, cStartMin) < Math.min(slotEndMin, cEndMin));
                     });
                     if (!busy) count++;
@@ -1232,14 +1394,11 @@
                     setIsBlocking(true);
                     try {
                         const res = await fetch(TOR4YOU_DELETE_URL, { 
-                            method: 'POST', 
-                            headers: { 'Content-Type': 'application/json' }, 
-                            body: JSON.stringify({ slots: toDelete }) 
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: toDelete }) 
                         });
                         const data = await res.json();
                         if (data.success) {
                             alert(`✅ היומן סונכרן! נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`);
-                            // כדאי לרענן את ה-map אחרי המחיקה
                             setOffset(p=>p);
                         } else alert(`❌ שגיאה מהשרת: ${data.error}`);
                     } catch (e) { alert('שגיאת תקשורת: ' + e.message); } 
@@ -1247,31 +1406,38 @@
                 }
             };
 
-            const sortedConstraints = useMemo(() => [...constraints].sort((a, b) => (b.type==='range'?b.startDate:b.date).localeCompare(a.type==='range'?a.startDate:a.date)), [constraints]);
+            const renderConstraintsTable = (consList, isEmptyMsg) => (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-right text-sm">
+                        <thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>התחלה</th><th>סיום</th><th>שעות</th><th>סיבה</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+                        <tbody className="text-dynamic opacity-90">
+                            {consList.length === 0 && <tr><td colSpan="7" className="text-center py-4">{isEmptyMsg}</td></tr>}
+                            {consList.map(c => {
+                                const emp = employees.find(e => e.id === c.employeeId);
+                                return <tr key={c.id} className="border-b border-gray-800 hover:bg-white/5"><td className="py-2 font-bold">{emp?.name}</td><td>{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td>{c.note}</td><td><StatusBadge status={c.status || 'pending'}/></td><td className="flex gap-2 py-1"><Button size="sm" variant={c.status==='approved'?"secondary":"success"} onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant={c.status==='rejected'?"secondary":"danger"} onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button><button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button></td></tr>
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            );
 
             return (
                 <div className="space-y-6 relative">
                     {isBlocking && (
                         <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center rounded-xl backdrop-blur-sm"><div className="bg-gray-900 p-6 rounded-xl border border-indigo-500 shadow-2xl flex flex-col items-center gap-4"><Loader className="animate-spin w-10 h-10 text-indigo-500" /><span className="text-lg font-bold text-white">מעדכן וחוסם תורים ב-Tor4You...</span></div></div>
                     )}
-                    <Card title="רשימת אילוצים">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-right text-sm"><thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>התחלה</th><th>סיום</th><th>שעות</th><th>סיבה</th><th>סטטוס</th><th>פעולות</th></tr></thead><tbody className="text-dynamic opacity-90">
-                                {sortedConstraints.map(c => {
-                                    const emp = employees.find(e => e.id === c.employeeId);
-                                    return <tr key={c.id} className="border-b border-gray-800 hover:bg-white/5"><td className="py-2 font-bold">{emp?.name}</td><td>{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td>{c.note}</td><td><StatusBadge status={c.status || 'pending'}/></td><td className="flex gap-2 py-1"><Button size="sm" variant={c.status==='approved'?"secondary":"success"} onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant={c.status==='rejected'?"secondary":"danger"} onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button><button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button></td></tr>
-                                })}
-                            </tbody></table>
-                        </div>
+                    <Card title="אילוצים עתידיים וממתינים לאישור">
+                        {renderConstraintsTable(activeCons, 'אין אילוצים פעילים להצגה')}
                     </Card>
-                    <Card title="מפת זמינות (סלוטים מדויקים של Tor4You / משך תור וסידור: 90 דק')">
+
+                    <Card title="מפת זמינות (סלוטים מדויקים של Tor4You / משך תור: 90 דק')">
                         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                             <div className="flex items-center gap-4"><Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button><span className="flex items-center gap-2 font-bold text-lg">{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())} {loadingSlots && <Loader className="w-4 h-4 animate-spin text-indigo-400"/>}</span><Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button></div>
                             <Button onClick={handleSyncAndBlock} variant="outline" className="bg-yellow-500/10 border-yellow-500 text-yellow-500 hover:bg-yellow-500/20"><AlertTriangle size={18}/> סריקת התנגשויות וסנכרון יומן</Button>
                         </div>
                         <div className="overflow-x-auto"><div className="min-w-[800px]"><div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold text-dynamic"><div className="bg-gray-800 p-2 rounded">שעה</div>{days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm rounded">{d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'})}</div>)}</div>
                             {dynamicHours.map(h => {
-                                const endStr = addTime(h, 60);
+                                const endStr = addTime(h, 90);
                                 return (
                                 <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs">
                                     <div className="bg-gray-800 p-2 rounded text-dynamic flex flex-col justify-center items-center">
@@ -1290,6 +1456,13 @@
                             )})}
                         </div></div>
                     </Card>
+
+                    <div className="mt-8 border-t border-gray-800 pt-8">
+                        <h3 className="text-xl font-bold flex items-center gap-2 opacity-70 mb-4"><History size={20}/> היסטוריית אילוצים (חודש נוכחי)</h3>
+                        <div className="card-bg rounded-xl p-6 opacity-80">
+                            {renderConstraintsTable(historyCons, 'אין היסטוריית אילוצים לחודש הנוכחי')}
+                        </div>
+                    </div>
                 </div>
             );
         };
@@ -1334,7 +1507,7 @@
         const EmployeeDashboard = ({ employee, data, settings }) => {
             const [tab, setTab] = useState('report');
             const myPendingTasks = (data.tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
-            const issuesCount = (data.issues||[]).filter(i => i.status === 'pending').length; // מראה כמה פתוח כדי לדעת
+            const issuesCount = (data.issues||[]).filter(i => i.status === 'pending').length; 
 
             return (
                 <div className="space-y-6">
@@ -1346,7 +1519,6 @@
                     
                     {tab==='report' && (
                         <div className="space-y-8">
-                            {/* העברנו את data.employees בצורה מסודרת לטופס כדי לפתור את באג השכר */}
                             <GroupReportForm employeeId={employee.id} employees={data.employees} settings={settings} onSave={() => {}}/>
                             <div className="border-t border-gray-800 pt-8 mt-8">
                                 <h2 className="text-2xl font-bold mb-6 text-dynamic">היסטוריית הדיווחים שלי</h2>
