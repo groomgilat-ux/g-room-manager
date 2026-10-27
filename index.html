@@ -54,7 +54,7 @@
         import { 
             User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, 
             FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, Activity,
-            X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell
+            X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench
         } from 'lucide-react';
 
         import { initializeApp } from 'firebase/app';
@@ -100,6 +100,11 @@
             if(!dateStr) return '';
             const d = new Date(dateStr);
             return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+        };
+        const formatDateTimeIL = (isoStr) => {
+            if(!isoStr) return '';
+            const d = new Date(isoStr);
+            return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
         };
         
         const addTime = (timeStr, minutesToAdd) => {
@@ -286,7 +291,7 @@
         function GRoomApp() {
             const [user, setUser] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
-            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [] });
+            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [], issues: [] });
             const [settings, setSettings] = useState(INITIAL_SETTINGS_FALLBACK);
             const [loading, setLoading] = useState(true);
             const [login, setLogin] = useState({ code: '', empId: '' });
@@ -309,6 +314,7 @@
                     onSnapshot(getCollectionRef('tasks'), s => setData(p => ({...p, tasks: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('expenses'), s => setData(p => ({...p, expenses: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('issues'), s => setData(p => ({...p, issues: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('app_settings'), s => {
                         if (!s.empty) {
                             const d = s.docs.find(doc => doc.id === 'global') || s.docs[0];
@@ -359,7 +365,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.4 - תיקוני אישורים וסנכרון תור חכם</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.5 - מודול תקלות חדרים וזמינות מותאמת</div>
                     </div>
                 </div>
             );
@@ -380,7 +386,7 @@
                     <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
                         {currentUser.role === 'admin' ? 
                             <AdminDashboard data={data} settings={settings} /> : 
-                            <EmployeeDashboard employee={currentUser.data} shifts={data.shifts} constraints={data.constraints} settings={settings} tasks={data.tasks} groups={data.groups}/>
+                            <EmployeeDashboard employee={currentUser.data} data={data} settings={settings} />
                         }
                     </main>
                 </div>
@@ -495,14 +501,14 @@
                         if(emp) wageAtTime = emp.wagePerGame || 0;
                     }
                     
-                    // תיקון סעיף 1: כל דיווח יופיע בדוחות השכר. דיווח ע"י מנהל לא דורש אישור. 
-                    const isApproved = isAdmin;
+                    // תיקון סעיף 1: כל דיווח, גם אם ע"י מנהל, נכנס כ-pending לדוחות השכר
                     await timeoutPromise(addDoc(getCollectionRef('shifts'), { 
                         employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, 
-                        status: isApproved ? 'approved' : 'pending', approved: isApproved, wageAtTime, isAutoGroup: true 
+                        status: 'pending', approved: false, wageAtTime, isAutoGroup: true 
                     }), 4000);
                     
-                    alert('קבוצה ומשמרת נשמרו בהצלחה!'); onSave();
+                    alert('קבוצה ומשמרת נשמרו בהצלחה!'); 
+                    onSave();
                 } catch(err) { alert(err.message === 'Timeout' ? 'נשמר בענן (איטי)' : err.message); onSave(); } 
                 finally { setSaving(false); }
             };
@@ -674,14 +680,17 @@
             const pendingReq = (data.requests || []).filter(r => r.status === 'pending');
             const pendingCons = (data.constraints || []).filter(c => c.status === 'pending');
             const pendingShifts = (data.shifts || []).filter(s => s.status === 'pending');
+            const pendingIssues = (data.issues || []).filter(i => i.status === 'pending');
             
             return (
                 <div className="space-y-6">
                     <div className="flex flex-wrap gap-2 border-b border-dynamic pb-2">
-                        {[{id:'groups', l:'הכנסות', i:Coins}, {id:'expenses', l:'דוח פיננסי והוצאות', i:LineChart}, {id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות שכר', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'tasks', l:'משימות', i:CheckSquare}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
-                            <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}><m.i size={18} className="icon-dynamic"/> {m.l} 
-                            {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
-                            {m.id === 'shifts' && pendingShifts.length > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingShifts.length}</span>}
+                        {[{id:'groups', l:'הכנסות', i:Coins}, {id:'expenses', l:'דוח פיננסי והוצאות', i:LineChart}, {id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות שכר', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'issues', l:'תקלות בחדרים', i:Wrench}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
+                            <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100 text-dynamic'}`}>
+                                <m.i size={18} className="icon-dynamic"/> {m.l} 
+                                {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
+                                {m.id === 'shifts' && pendingShifts.length > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingShifts.length}</span>}
+                                {m.id === 'issues' && pendingIssues.length > 0 && <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingIssues.length}</span>}
                             </button>
                         )}
                         {pendingReq.length > 0 && <button onClick={()=>setTab('requests')} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg ml-auto transition-colors ${tab==='requests'?'bg-indigo-600/10 border-b-2 border-indigo-500':'text-yellow-400'}`}><Bell size={18} className="animate-bounce"/><span className="font-bold">{pendingReq.length}</span></button>}
@@ -692,7 +701,7 @@
                         {tab==='employees' && <AdminEmployees employees={data.employees||[]}/>}
                         {tab==='shifts' && <AdminReports employees={data.employees||[]} shifts={data.shifts||[]} settings={settings}/>}
                         {tab==='constraints' && <AdminConstraints employees={data.employees||[]} constraints={data.constraints||[]} settings={settings}/>}
-                        {tab==='tasks' && <AdminTasks employees={data.employees||[]} tasks={data.tasks||[]}/>}
+                        {tab==='issues' && <AdminIssues issues={data.issues||[]} employees={data.employees||[]} settings={settings}/>}
                         {tab==='settings' && <AdminSettings settings={settings}/>}
                         {tab==='requests' && <AdminRequests requests={pendingReq} employees={data.employees||[]}/>}
                     </div>
@@ -752,7 +761,6 @@
                                         <th className="px-2 font-semibold text-center">חשבונית</th>
                                         <th className="px-2 font-semibold">שחקנים</th>
                                         <th className="px-2 font-semibold text-green-400">סה"כ לקופה</th>
-                                        {/* סעיף 2: עמודת אמצעי תשלום חזרה */}
                                         <th className="px-2 font-semibold">אמצעי תשלום</th>
                                         <th className="px-2 font-semibold">מחיקה</th>
                                     </tr>
@@ -760,6 +768,7 @@
                                 <tbody className="divide-y divide-gray-800 text-dynamic">
                                     {filteredAndSortedGroups.length === 0 && <tr><td colSpan="9" className="text-center py-6 opacity-60">לא נמצאו דיווחים</td></tr>}
                                     {filteredAndSortedGroups.map(g => {
+                                        const empName = g.employeeId === 'admin' ? 'מנהל' : (employees.find(e => e.id === g.employeeId)?.name || '');
                                         const activePays = [];
                                         if (Number(g.payments?.cash)>0) activePays.push('מזומן');
                                         if (Number(g.payments?.credit)>0) activePays.push('אשראי');
@@ -771,7 +780,7 @@
                                         return (
                                         <tr key={g.id} className="hover:bg-indigo-900/30 cursor-pointer transition-colors" onClick={() => setViewingGroup(g)}>
                                             <td className="py-3 px-2 font-medium">{formatDateIL(g.date)} {g.time}</td>
-                                            <td className="px-2 opacity-80">{g.employeeId === 'admin' ? 'מנהל' : (employees.find(e => e.id === g.employeeId)?.name || '')}</td>
+                                            <td className="px-2 opacity-80">{empName}</td>
                                             <td className="px-2 opacity-80">{g.room}</td>
                                             <td className="px-2 font-medium text-indigo-200">{g.customerName}</td>
                                             <td className="px-2 text-center opacity-70">{g.invoiceNumber || '-'}</td>
@@ -786,7 +795,7 @@
                         </div>
                     </Card>
 
-                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
+                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה ידני</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
                     {viewingGroup && <EditGroupModal group={viewingGroup} employees={employees} onClose={()=>setViewingGroup(null)} />}
                 </div>
             );
@@ -972,7 +981,7 @@
         const AdminReports = ({ employees, shifts, settings }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
             const monthlyShifts = shifts.filter(s => s.date.startsWith(month) && s.status === 'approved');
-            // סעיף 1: מציג את כל מה ש-pending בדוחות (גם מה שהמנהל דיווח ידנית אם הוא הגדיר pending)
+            // עכשיו Pending מושך גם תורים שהוזנו ע"י העובדים וגם תורים שהוזנו ע"י מנהל (שנכנסים עכשיו כ-pending כברירת מחדל)
             const pendingShifts = shifts.filter(s => s.status === 'pending');
 
             const report = employees.map(emp => {
@@ -993,14 +1002,14 @@
             return (
                 <div className="space-y-6">
                     {pendingShifts.length > 0 && (
-                        <Card title="משמרות ממתינות לאישור (דיווחים שנכנסו ע&quot;י עובדים)" className="border-yellow-500/50">
+                        <Card title="משמרות ממתינות לאישור (דיווחים מקופת העסק)" className="border-yellow-500/50">
                             <div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>תאריך</th><th>שעה</th><th>חדר</th><th>משחקים</th><th>תעריף</th><th>פעולות</th></tr></thead><tbody className="divide-y divide-gray-800">
                                 {pendingShifts.map(s => {
                                     const e = employees.find(emp => emp.id === s.employeeId);
                                     const wage = s.wageAtTime || e?.wagePerGame || 0;
                                     return (
                                         <tr key={s.id} className="hover:bg-gray-800/30">
-                                            <td className="py-2 font-bold">{e?.name}</td><td>{formatDateIL(s.date)}</td><td>{s.startTime}</td><td>{s.room}</td><td>{s.gamesCount}</td><td>₪{wage}</td>
+                                            <td className="py-2 font-bold">{e?.name || 'לא נמצא'}</td><td>{formatDateIL(s.date)}</td><td>{s.startTime}</td><td>{s.room}</td><td>{s.gamesCount}</td><td>₪{wage}</td>
                                             <td className="flex gap-2 py-2"><Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, 'rejected')}><XIcon size={14}/></Button><button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('shifts', s.id))} className="text-red-400 mr-2"><Trash2 size={14}/></button></td>
                                         </tr>
                                     )
@@ -1039,6 +1048,70 @@
             );
         };
 
+        const AdminIssues = ({ issues, employees, settings }) => {
+            const pendingIssues = issues.filter(i => i.status === 'pending').sort((a,b) => new Date(a.reportedAt) - new Date(b.reportedAt));
+            const doneIssues = issues.filter(i => i.status === 'done').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
+
+            const handlePriority = async (id, priority) => { await updateDoc(getDocRef('issues', id), { priority }); };
+            const handleResolve = async (id) => { await updateDoc(getDocRef('issues', id), { status: 'done', resolvedAt: new Date().toISOString() }); };
+
+            const getPriorityColor = (p) => {
+                if(p === 'דחופה') return 'text-red-400 bg-red-400/10 border-red-400/30';
+                if(p === 'רגילה') return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
+                return 'text-green-400 bg-green-400/10 border-green-400/30';
+            };
+
+            return (
+                <div className="space-y-6">
+                    <Card title="תקלות בטיפול (פתוחות)">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right text-sm">
+                                <thead className="opacity-70 border-b border-gray-700"><tr><th>זמן דיווח</th><th>חדר</th><th>תיאור התקלה</th><th>מדווח</th><th>עדיפות לטיפול</th><th>פעולות</th></tr></thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {pendingIssues.length === 0 && <tr><td colSpan="6" className="text-center py-6 opacity-60">החדרים במצב מושלם! אין תקלות פתוחות.</td></tr>}
+                                    {pendingIssues.map(i => (
+                                        <tr key={i.id} className="hover:bg-white/5">
+                                            <td className="py-3 text-xs opacity-70">{formatDateTimeIL(i.reportedAt)}</td>
+                                            <td className="font-bold">{i.room}</td>
+                                            <td className="max-w-xs whitespace-normal">{i.description}</td>
+                                            <td className="opacity-80">{i.reportedByName}</td>
+                                            <td>
+                                                <select className={`border rounded p-1 text-xs outline-none focus:ring-1 ${getPriorityColor(i.priority)}`} value={i.priority} onChange={(e)=>handlePriority(i.id, e.target.value)}>
+                                                    <option value="נמוכה" className="bg-gray-800 text-white">נמוכה</option><option value="רגילה" className="bg-gray-800 text-white">רגילה</option><option value="דחופה" className="bg-gray-800 text-white">דחופה</option>
+                                                </select>
+                                            </td>
+                                            <td className="flex items-center gap-2 py-2">
+                                                <Button size="sm" variant="success" onClick={()=>handleResolve(i.id)}>טופל <Check size={14}/></Button>
+                                                <button onClick={()=>confirm("למחוק דיווח?") && deleteDoc(getDocRef('issues', i.id))} className="text-red-400 p-2"><Trash2 size={16}/></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+
+                    <Card title="היסטוריית תקלות שטופלו">
+                        <div className="overflow-x-auto opacity-70">
+                            <table className="w-full text-right text-sm">
+                                <thead className="border-b border-gray-700"><tr><th>זמן דיווח</th><th>חדר</th><th>תיאור התקלה</th><th>מדווח</th><th>זמן טיפול סופי</th></tr></thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {doneIssues.length === 0 && <tr><td colSpan="5" className="text-center py-4">אין תקלות שטופלו עדיין.</td></tr>}
+                                    {doneIssues.map(i => (
+                                        <tr key={i.id}>
+                                            <td className="py-2 text-xs">{formatDateTimeIL(i.reportedAt)}</td>
+                                            <td>{i.room}</td><td className="line-through">{i.description}</td><td>{i.reportedByName}</td>
+                                            <td className="text-xs">{formatDateTimeIL(i.resolvedAt)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+                </div>
+            );
+        };
+
         const AdminEmployees = ({ employees }) => {
             const [open, setOpen] = useState(false);
             const [edit, setEdit] = useState(null);
@@ -1070,11 +1143,11 @@
                 const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d;
             }), [offset]);
 
-            // בניית עמודות היומן באופן דינמי רק מהשעות שמוגדרות בתור פור יו לשבוע הנוכחי
+            // סעיף 4: שאיבת זמנים מדויקים מתור פור יו עבור היומן
             const dynamicHours = useMemo(() => {
                 const times = new Set();
                 Object.values(tor4youSlotsMap).forEach(arr => arr.forEach(s => times.add(s.time)));
-                if (times.size === 0) return ["10:00", "11:30", "13:00", "14:30", "16:00", "17:30", "19:00", "20:30", "22:00", "23:30"];
+                if (times.size === 0) return ["10:00", "11:30", "13:00", "14:30", "16:00", "17:30", "19:00", "20:30", "22:00"];
                 return Array.from(times).sort();
             }, [tor4youSlotsMap]);
 
@@ -1091,16 +1164,15 @@
                 fetchWeekSlots();
             }, [offset]);
 
-            // חישוב התנגשויות (סעיף 3). מניח שזמן משחק כולל התארגנות הוא 90 דקות
             const getStatus = (d, hStr, customConstraints = constraints) => {
                 const dStr = d.toISOString().slice(0,10);
                 const daySlots = tor4youSlotsMap[dStr] || [];
                 const slot = daySlots.find(s => s.time === hStr);
-                if (!slot) return -1; // לא פתוח ב-Tor4You
+                if (!slot) return -1; // לא קיים סלוט כזה בתור פור יו היום
                 
                 const [curH, curM] = hStr.split(':').map(Number);
                 const slotStartMin = curH * 60 + curM;
-                const slotEndMin = slotStartMin + 90; // 90 דקות בלוק
+                const slotEndMin = slotStartMin + 90; // זמן תור כולל מרווח (לדוגמה 11:30 עד 13:00)
 
                 let count = 0;
                 employees.forEach(emp => {
@@ -1113,7 +1185,7 @@
                         const cStartMin = sH * 60 + sM;
                         const cEndMin = eH * 60 + eM;
                         
-                        // בדיקת חפיפת זמנים אמיתית: מקסימום התחלות קטן ממינימום סיומים
+                        // האם האילוץ של העובד חופף לסלוט הזה?
                         return c.date === dStr && (Math.max(slotStartMin, cStartMin) < Math.min(slotEndMin, cEndMin));
                     });
                     if (!busy) count++;
@@ -1123,7 +1195,6 @@
             
             const handleStatus = async (id, status) => { await updateDoc(getDocRef('constraints', id), { status }); };
 
-            // סעיף 4: פונקציית סנכרון יומן מלאה מול Tor4You
             const handleSyncAndBlock = async () => {
                 const toDelete = [];
                 const warnings = [];
@@ -1133,7 +1204,6 @@
                     const daySlots = tor4youSlotsMap[dStr] || [];
                     
                     daySlots.forEach(slot => {
-                        // אם יש 0 עובדים פנויים במשבצת הזו
                         if (getStatus(d, slot.time) === 0) {
                             if (slot.participants > 0) {
                                 warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
@@ -1145,17 +1215,17 @@
                 });
 
                 if (warnings.length === 0 && toDelete.length === 0) {
-                    return alert('היומן תקין! אין משבצות של 0 עובדים בשבוע המוצג.');
+                    return alert('✅ היומן תקין לחלוטין! אין משבצות של 0 עובדים בשבוע המוצג.');
                 }
 
                 let message = `סריקת יומן הושלמה:\n\n`;
                 if (warnings.length > 0) {
-                    message += `🚨 ${warnings.length} תורים כבר הוזמנו בשעות שאין להם עובד!\n(לא יימחקו, חובה ליצור קשר עם הלקוח)\n`;
+                    message += `🚨 שימו לב: ${warnings.length} תורים כבר הוזמנו בשעות שאין להן עובד!\n(הן לא יימחקו, חובה ליצור קשר עם הלקוח)\n`;
                 }
                 if (toDelete.length > 0) {
-                    message += `\n🗑️ נמצאו ${toDelete.length} תורים ריקים באוויר ללא אף מפעיל.\nהאם למחוק ולחסום אותם כעת באתר Tor4You?`;
+                    message += `\n🗑️ נמצאו ${toDelete.length} משבצות זמן ריקות לחלוטין (ללא עובדים וללא הזמנות).\n\nהאם למחוק ולחסום אותן כעת באתר Tor4You?`;
                 } else {
-                    return alert(message); // רק אזהרות
+                    return alert(message);
                 }
 
                 if (confirm(message)) {
@@ -1168,7 +1238,9 @@
                         });
                         const data = await res.json();
                         if (data.success) {
-                            alert(`✅ נמחקו בהצלחה ${data.deletedCount} תורים מהאתר.`);
+                            alert(`✅ היומן סונכרן! נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`);
+                            // כדאי לרענן את ה-map אחרי המחיקה
+                            setOffset(p=>p);
                         } else alert(`❌ שגיאה מהשרת: ${data.error}`);
                     } catch (e) { alert('שגיאת תקשורת: ' + e.message); } 
                     finally { setIsBlocking(false); }
@@ -1192,24 +1264,30 @@
                             </tbody></table>
                         </div>
                     </Card>
-                    <Card title="מפת זמינות (חופפת ל-Tor4You / משך תור: 90 דק')">
+                    <Card title="מפת זמינות (סלוטים מדויקים של Tor4You / משך תור וסידור: 90 דק')">
                         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                             <div className="flex items-center gap-4"><Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button><span className="flex items-center gap-2 font-bold text-lg">{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())} {loadingSlots && <Loader className="w-4 h-4 animate-spin text-indigo-400"/>}</span><Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button></div>
                             <Button onClick={handleSyncAndBlock} variant="outline" className="bg-yellow-500/10 border-yellow-500 text-yellow-500 hover:bg-yellow-500/20"><AlertTriangle size={18}/> סריקת התנגשויות וסנכרון יומן</Button>
                         </div>
                         <div className="overflow-x-auto"><div className="min-w-[800px]"><div className="grid grid-cols-8 gap-1 mb-1 text-center font-bold text-dynamic"><div className="bg-gray-800 p-2 rounded">שעה</div>{days.map((d,i) => <div key={i} className="bg-gray-800 p-2 text-sm rounded">{d.toLocaleDateString('he-IL', {weekday:'short', day:'numeric', month:'numeric'})}</div>)}</div>
-                            {dynamicHours.map(h => (
-                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs"><div className="bg-gray-800 p-2 rounded text-dynamic font-bold">{h}</div>
+                            {dynamicHours.map(h => {
+                                const endStr = addTime(h, 60);
+                                return (
+                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs">
+                                    <div className="bg-gray-800 p-2 rounded text-dynamic flex flex-col justify-center items-center">
+                                        <span className="font-bold text-sm">{h}</span>
+                                        <span className="opacity-50 text-[10px]">{h}-{endStr}</span>
+                                    </div>
                                     {days.map((d,i) => {
                                         const stat = getStatus(d, h);
                                         let bg = 'bg-green-900/60';
                                         if (stat === -1) bg = 'bg-gray-800/10 opacity-20';
                                         else if (stat === 0) bg = 'bg-red-900/60 ring-1 ring-red-500';
                                         else if (stat === 1) bg = 'bg-yellow-900/60';
-                                        return <div key={i} className={`p-2 rounded ${bg} text-white font-bold`}>{stat > -1 ? stat : ''}</div>
+                                        return <div key={i} className={`p-2 rounded ${bg} text-white font-bold flex items-center justify-center`}>{stat > -1 ? stat : ''}</div>
                                     })}
                                 </div>
-                            ))}
+                            )})}
                         </div></div>
                     </Card>
                 </div>
@@ -1253,33 +1331,100 @@
         };
 
         // --- Employee Views ---
-        const EmployeeDashboard = ({ employee, shifts, constraints, settings, tasks, groups }) => {
+        const EmployeeDashboard = ({ employee, data, settings }) => {
             const [tab, setTab] = useState('report');
-            const myPendingTasks = (tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
+            const myPendingTasks = (data.tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
+            const issuesCount = (data.issues||[]).filter(i => i.status === 'pending').length; // מראה כמה פתוח כדי לדעת
+
             return (
                 <div className="space-y-6">
                     <div className="flex card-bg p-1 rounded-lg w-fit overflow-x-auto max-w-full">
-                        {[{id:'report', l:'דיווח'}, {id:'history', l:'היסטוריה'}, {id:'constraints', l:'אילוצים'}, {id:'tasks', l:'משימות', c:myPendingTasks.length}, {id:'profile', l:'פרופיל'}].map(t => (
-                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{t.l}{t.c > 0 && <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{t.c}</span>}</button>
+                        {[{id:'report', l:'דיווח והיסטוריה'}, {id:'constraints', l:'אילוצים'}, {id:'issues', l:'תקלות בחדרים', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל'}].map(t => (
+                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{t.l}{t.c > 0 && <span className={`${t.color} text-white text-xs px-1.5 py-0.5 rounded-full font-bold`}>{t.c}</span>}</button>
                         ))}
                     </div>
-                    {tab==='report' && <GroupReportForm employeeId={employee.id} settings={settings} onSave={() => setTab('history')}/>}
-                    {tab==='history' && <EmployeeHistory employee={employee} groups={groups||[]} shifts={shifts||[]}/>}
-                    {tab==='constraints' && <EmployeeConstraints employee={employee} constraints={constraints||[]}/>}
-                    {tab==='tasks' && <EmployeeTasks employee={employee} tasks={tasks||[]}/>}
-                    {tab==='profile' && <EmployeeProfile employee={employee} shifts={shifts||[]}/>}
+                    
+                    {tab==='report' && (
+                        <div className="space-y-8">
+                            {/* העברנו את data.employees בצורה מסודרת לטופס כדי לפתור את באג השכר */}
+                            <GroupReportForm employeeId={employee.id} employees={data.employees} settings={settings} onSave={() => {}}/>
+                            <div className="border-t border-gray-800 pt-8 mt-8">
+                                <h2 className="text-2xl font-bold mb-6 text-dynamic">היסטוריית הדיווחים שלי</h2>
+                                <EmployeeHistory employee={employee} groups={data.groups||[]} shifts={data.shifts||[]}/>
+                            </div>
+                        </div>
+                    )}
+                    {tab==='constraints' && <EmployeeConstraints employee={employee} constraints={data.constraints||[]}/>}
+                    {tab==='issues' && <EmployeeIssues employee={employee} issues={data.issues||[]} settings={settings}/>}
+                    {tab==='tasks' && <EmployeeTasks employee={employee} tasks={data.tasks||[]}/>}
+                    {tab==='profile' && <EmployeeProfile employee={employee} shifts={data.shifts||[]}/>}
                 </div>
             );
         };
         
+        const EmployeeIssues = ({ employee, issues, settings }) => {
+            const [room, setRoom] = useState('');
+            const [desc, setDesc] = useState('');
+            const [saving, setSaving] = useState(false);
+
+            const pendingIssues = issues.filter(i => i.status === 'pending').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
+            const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
+            useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
+
+            const submitIssue = async (e) => {
+                e.preventDefault();
+                setSaving(true);
+                try {
+                    await addDoc(getCollectionRef('issues'), {
+                        room, description: desc, reportedBy: employee.id, reportedByName: employee.name,
+                        status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString()
+                    });
+                    alert('התקלה דווחה בהצלחה ותטופל בהקדם.');
+                    setDesc('');
+                } catch(err) { alert(err.message); } finally { setSaving(false); }
+            };
+
+            return (
+                <div className="grid md:grid-cols-2 gap-6">
+                    <Card title="דיווח על תקלה חדשה בחדר">
+                        <form onSubmit={submitIssue} className="space-y-4">
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm opacity-70">באיזה חדר התקלה?</label>
+                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>
+                                    {roomList.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm opacity-70">תיאור מלא של התקלה (מה בדיוק לא עובד?)</label>
+                                <textarea className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white h-32 resize-none" value={desc} onChange={e=>setDesc(e.target.value)} required></textarea>
+                            </div>
+                            <Button type="submit" variant="danger" disabled={saving} className="w-full">{saving ? 'שולח...' : 'שלח דיווח למנהל'}</Button>
+                        </form>
+                    </Card>
+                    <Card title="תקלות פתוחות שממתינות לתיקון">
+                        <div className="space-y-3">
+                            {pendingIssues.length === 0 && <div className="text-center py-8 opacity-60">אין תקלות פתוחות כרגע. הכל תקין! 🎉</div>}
+                            {pendingIssues.map(i => (
+                                <div key={i.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h4 className="font-bold text-lg text-indigo-300">{i.room}</h4>
+                                        <span className="text-xs opacity-60">{formatDateTimeIL(i.reportedAt)} ע"י {i.reportedByName}</span>
+                                    </div>
+                                    <p className="text-sm text-gray-300 whitespace-pre-wrap">{i.description}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                </div>
+            );
+        };
+
         const EmployeeHistory = ({ employee, groups, shifts }) => {
             const month = new Date().toISOString().slice(0, 7);
             const myGroups = groups.filter(g => g.employeeId === employee.id && g.date.startsWith(month)).sort((a,b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
-            const myShifts = shifts.filter(s => s.employeeId === employee.id && s.date.startsWith(month) && !s.isAutoGroup).sort((a,b) => b.date.localeCompare(a.date));
             return (
                 <div className="space-y-6">
-                    <Card title={`קבוצות שדיווחתי (${month})`}><div className="overflow-x-auto"><table className="w-full text-right text-sm whitespace-nowrap"><thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך ושעה</th><th>חדר</th><th>לקוח</th><th>שחקנים</th><th>לתשלום</th><th>נמחק?</th></tr></thead><tbody className="divide-y divide-gray-800 text-dynamic opacity-90">{myGroups.length === 0 && <tr><td colSpan="6" className="text-center py-4">לא דיווחת על קבוצות החודש</td></tr>}{myGroups.map(g => (<tr key={g.id}><td className="py-2">{formatDateIL(g.date)} {g.time}</td><td>{g.room}</td><td>{g.customerName}</td><td>{g.totalPlayers}</td><td className="text-green-400">₪{g.finalPriceToPay}</td><td><button onClick={() => confirm("למחוק דיווח?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-400"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></Card>
-                    {myShifts.length > 0 && <Card title="דיווחים ידניים ישנים"><div className="overflow-x-auto text-sm opacity-70"><table className="w-full text-right"><thead><tr><th>תאריך</th><th>שעה</th><th>חדר</th><th>משחקים</th></tr></thead><tbody>{myShifts.map(s => <tr key={s.id}><td>{formatDateIL(s.date)}</td><td>{s.startTime}</td><td>{s.room}</td><td>{s.gamesCount}</td></tr>)}</tbody></table></div></Card>}
+                    <Card><div className="overflow-x-auto"><table className="w-full text-right text-sm whitespace-nowrap"><thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך ושעה</th><th>חדר</th><th>לקוח</th><th>שחקנים</th><th>לתשלום</th><th>נמחק?</th></tr></thead><tbody className="divide-y divide-gray-800 text-dynamic opacity-90">{myGroups.length === 0 && <tr><td colSpan="6" className="text-center py-4">לא דיווחת על קבוצות החודש</td></tr>}{myGroups.map(g => (<tr key={g.id}><td className="py-2">{formatDateIL(g.date)} {g.time}</td><td>{g.room}</td><td>{g.customerName}</td><td>{g.totalPlayers}</td><td className="text-green-400">₪{g.finalPriceToPay}</td><td><button onClick={() => confirm("למחוק דיווח?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-400"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></Card>
                 </div>
             )
         }
