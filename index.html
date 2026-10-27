@@ -365,7 +365,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.6 - אילוצים וניהול הוצאות</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.7 - פתרון מסך שחור למנהל</div>
                     </div>
                 </div>
             );
@@ -669,64 +669,6 @@
                             {balance !== 0 && <div className="text-red-400 text-sm font-bold text-center mt-3 bg-red-900/20 p-2 rounded">יתרת פער: ₪{balance} (חובה לאפס)</div>}
                             <Button onClick={handleSave} className="w-full mt-4" disabled={saving || balance !== 0}>{saving ? 'מעדכן...' : 'שמור שינויים'}</Button>
                         </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const EditExpenseModal = ({ expense, onClose, expenses }) => {
-            const [expName, setExpName] = useState(expense.name);
-            const [expCategory, setExpCategory] = useState(expense.category);
-            const [customCategory, setCustomCategory] = useState(''); 
-            const [expAmount, setExpAmount] = useState(expense.totalAmount);
-            const [expFrom, setExpFrom] = useState(expense.fromMonth);
-            const [expTo, setExpTo] = useState(expense.toMonth);
-            const [expInvoice, setExpInvoice] = useState(expense.invoiceNumber || '');
-            const [saving, setSaving] = useState(false);
-
-            const defaultCats = ['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל'];
-            const dynamicCats = [...new Set([...defaultCats, ...expenses.map(e => e.category)])].filter(Boolean);
-
-            const handleSave = async (e) => {
-                e.preventDefault();
-                if (expFrom > expTo) return alert('חודש הסיום לא יכול להיות לפני חודש ההתחלה');
-                const finalCategory = expCategory === 'אחר' ? customCategory : expCategory;
-                if (!finalCategory) return alert('נא להזין קטגוריה');
-
-                setSaving(true);
-                const monthsCount = getMonthsDifference(expFrom, expTo);
-                const monthlyRatio = Number(expAmount) / monthsCount;
-                try {
-                    await updateDoc(getDocRef('expenses', expense.id), {
-                        name: expName, category: finalCategory, totalAmount: Number(expAmount),
-                        fromMonth: expFrom, toMonth: expTo, monthlyAmount: monthlyRatio, invoiceNumber: expInvoice
-                    });
-                    onClose();
-                } catch(err) { alert(err.message); setSaving(false); }
-            };
-
-            return (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 fade-in" onClick={onClose}>
-                    <div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3">
-                            <h3 className="text-xl font-bold">עריכת הוצאה</h3>
-                            <button onClick={onClose} className="text-gray-400 hover:text-white"><XIcon size={20}/></button>
-                        </div>
-                        <form onSubmit={handleSave} className="space-y-4">
-                            <Input label="תיאור ההוצאה" value={expName} onChange={e=>setExpName(e.target.value)} required />
-                            <div className="flex flex-col gap-1">
-                                <label className="text-sm opacity-70">קטגוריה</label>
-                                <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={expCategory} onChange={e=>setExpCategory(e.target.value)}>
-                                    {dynamicCats.map(c => <option key={c} value={c}>{c}</option>)}
-                                    <option value="אחר">אחר (הזן קטגוריה חדשה)...</option>
-                                </select>
-                            </div>
-                            {expCategory === 'אחר' && <Input label="קטגוריה חדשה" value={customCategory} onChange={e=>setCustomCategory(e.target.value)} required />}
-                            <Input label="מספר חשבונית/קבלה" value={expInvoice} onChange={e=>setExpInvoice(e.target.value)} />
-                            <Input label="סכום כולל לתשלום (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required />
-                            <div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div>
-                            <Button type="submit" disabled={saving} className="w-full mt-4">{saving?'שומר...':'שמור עדכונים'}</Button>
-                        </form>
                     </div>
                 </div>
             );
@@ -1172,7 +1114,6 @@
             const pendingIssues = issues.filter(i => i.status === 'pending').sort((a,b) => new Date(a.reportedAt) - new Date(b.reportedAt));
             const doneIssues = issues.filter(i => i.status === 'done').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
 
-            // דיווח מהיר למנהל
             const [room, setRoom] = useState('');
             const [desc, setDesc] = useState('');
             const [saving, setSaving] = useState(false);
@@ -1288,7 +1229,6 @@
             const todayStr = new Date().toISOString().slice(0, 10);
             const currentMonthStr = todayStr.slice(0, 7);
 
-            // סעיף 2: פיצול האילוצים
             const activeCons = useMemo(() => {
                 return constraints.filter(c => {
                     const cDate = c.type === 'range' ? c.endDate : c.date;
