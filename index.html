@@ -54,7 +54,7 @@
         import { 
             User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, 
             FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, Activity,
-            X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History
+            X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History, MessageCircle
         } from 'lucide-react';
 
         import { initializeApp } from 'firebase/app';
@@ -292,7 +292,7 @@
         function GRoomApp() {
             const [user, setUser] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
-            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [], issues: [] });
+            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [], issues: [], assignments: [] });
             const [settings, setSettings] = useState(INITIAL_SETTINGS_FALLBACK);
             const [loading, setLoading] = useState(true);
             const [login, setLogin] = useState({ code: '', empId: '' });
@@ -316,6 +316,7 @@
                     onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('expenses'), s => setData(p => ({...p, expenses: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('issues'), s => setData(p => ({...p, issues: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('assignments'), s => setData(p => ({...p, assignments: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('app_settings'), s => {
                         if (!s.empty) {
                             const d = s.docs.find(doc => doc.id === 'global') || s.docs[0];
@@ -337,11 +338,11 @@
             }, [settings]);
 
             const doLogin = () => {
-                if ((login.empId === 'admin' && login.code === settings.adminCode) || (login.empId === 'admin' && data.employees.length === 0 && login.code === 'admin123')) {
+                if ((login.empId === 'admin' && login.code === settings.adminCode) || (login.empId === 'admin' && (data.employees||[]).length === 0 && login.code === 'admin123')) {
                     setCurrentUser({ role: 'admin', name: 'מנהל המערכת', id: 'admin' });
                 } else {
-                    const emp = data.employees.find(e => e.id === login.empId);
-                    if (emp && emp.code === login.code) setCurrentUser({ role: 'employee', data: emp });
+                    const emp = (data.employees||[]).find(e => e.id === login.empId);
+                    if (emp && emp.code === login.code) setCurrentUser({ role: 'employee', data: emp, id: emp.id, name: emp.name });
                     else alert("פרטי התחברות שגויים");
                 }
             };
@@ -366,7 +367,7 @@
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
                         </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 7.9 - תיקוני באגים ואבטחת מסך</div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 8.0 - שיוך תורים ו-WhatsApp</div>
                     </div>
                 </div>
             );
@@ -378,7 +379,7 @@
                             {settings.logo && <img src={settings.logo} className="h-8 w-8 rounded object-cover"/>}
                             <span className="font-bold text-xl text-dynamic hidden sm:block">{settings.businessName}</span>
                             <span className="text-xs bg-indigo-900/50 text-indigo-200 px-3 py-1 rounded-full border border-indigo-500/30 flex items-center gap-2">
-                                {currentUser.role === 'admin' ? 'מנהל מערכת' : `שלום, ${currentUser.data.name}`}
+                                {currentUser.role === 'admin' ? 'מנהל מערכת' : `שלום, ${currentUser.name}`}
                                 <div className={`w-2 h-2 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500'}`}></div>
                             </span>
                         </div>
@@ -387,7 +388,7 @@
                     <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
                         {currentUser.role === 'admin' ? 
                             <AdminDashboard data={data} settings={settings} /> : 
-                            <EmployeeDashboard employee={currentUser.data} data={data} settings={settings} />
+                            <EmployeeDashboard employee={currentUser} data={data} settings={settings} />
                         }
                     </main>
                 </div>
@@ -472,7 +473,8 @@
             const discountE = settings.pricing?.discountEligible || 10;
             let totalDiscountAmount = hasMegaLaan ? 0 : (Number(kids) * basePricePerPlayer * (discountK / 100) + Number(eligible) * basePricePerPlayer * (discountE / 100));
             
-            let finalPriceToPay = hasMegaLaan ? ((Number(totalPlayers) - Number(megaLaanPlayers) > 0 ? (Number(totalPlayers) - Number(megaLaanPlayers)) * basePricePerPlayer : 0) + weekendMegaLaanFee) : (totalOriginalPrice - totalDiscountAmount);
+            // סעיף 1: עיגול כלפי מעלה לסכום הסופי
+            let finalPriceToPay = hasMegaLaan ? ((Number(totalPlayers) - Number(megaLaanPlayers) > 0 ? (Number(totalPlayers) - Number(megaLaanPlayers)) * basePricePerPlayer : 0) + weekendMegaLaanFee) : Math.ceil(totalOriginalPrice - totalDiscountAmount);
 
             const totalEnteredPayment = Object.values(payments).reduce((acc, val) => acc + (Number(val) || 0), 0);
             const paymentBalance = finalPriceToPay - totalEnteredPayment;
@@ -699,7 +701,7 @@
                         {tab==='expenses' && <AdminExpenses expenses={data.expenses||[]} groups={data.groups||[]} shifts={data.shifts||[]} employees={data.employees||[]} />}
                         {tab==='employees' && <AdminEmployees employees={data.employees||[]}/>}
                         {tab==='shifts' && <AdminReports employees={data.employees||[]} shifts={data.shifts||[]} settings={settings}/>}
-                        {tab==='constraints' && <AdminConstraints employees={data.employees||[]} constraints={data.constraints||[]} settings={settings}/>}
+                        {tab==='constraints' && <AdminConstraints employees={data.employees||[]} constraints={data.constraints||[]} settings={settings} assignments={data.assignments||[]}/>}
                         {tab==='issues' && <AdminIssues issues={data.issues||[]} employees={data.employees||[]} settings={settings}/>}
                         {tab==='settings' && <AdminSettings settings={settings}/>}
                         {tab==='requests' && <AdminRequests requests={pendingReq} employees={data.employees||[]}/>}
@@ -794,7 +796,7 @@
                         </div>
                     </Card>
 
-                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה (מנהל)</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
+                    {showManual && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-4xl border border-gray-700 max-h-[90vh] overflow-y-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">דיווח קבוצה ידני</h3><button onClick={()=>setShowManual(false)} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><GroupReportForm employeeId="admin" isAdmin={true} employees={employees} settings={settings} onSave={()=>setShowManual(false)}/></div></div>}
                     {viewingGroup && <EditGroupModal group={viewingGroup} employees={employees} onClose={()=>setViewingGroup(null)} />}
                 </div>
             );
@@ -1220,11 +1222,58 @@
             );
         };
 
-        const AdminConstraints = ({ employees, constraints, settings }) => {
+        const AssignModal = ({ slotData, onClose, employees, settings }) => {
+            const [selectedEmp, setSelectedEmp] = useState('');
+            const [saving, setSaving] = useState(false);
+            const roomName = (settings.roomsList || 'סודו של הודיני').split(',')[0].trim();
+
+            const handleAssign = async () => {
+                if(!selectedEmp) return alert('בחר עובד לשיוך');
+                setSaving(true);
+                try {
+                    const assignId = `${slotData.dateStr}_${slotData.time.replace(':','')}`;
+                    await setDoc(getDocRef('assignments', assignId), {
+                        date: slotData.dateStr,
+                        time: slotData.time,
+                        customerName: slotData.customerName,
+                        customerPhone: slotData.customerPhone,
+                        employeeId: selectedEmp,
+                        room: roomName
+                    });
+                    alert('התור שויך בהצלחה!');
+                    onClose();
+                } catch(e) { alert(e.message); setSaving(false); }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 fade-in" onClick={onClose}>
+                    <div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}>
+                        <h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">שיוך תור למפעיל</h3>
+                        <div className="text-sm opacity-80 mb-4 space-y-1">
+                            <div><strong>זמן:</strong> {formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div>
+                            <div><strong>לקוח:</strong> {slotData.customerName}</div>
+                            <div><strong>טלפון:</strong> {slotData.customerPhone || 'אין'}</div>
+                        </div>
+                        <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-4" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)}>
+                            <option value="">-- בחר מי יפעיל --</option>
+                            <option value="admin">מנהל מערכת</option>
+                            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                        </select>
+                        <div className="flex gap-2">
+                            <Button variant="secondary" onClick={onClose} className="flex-1">ביטול</Button>
+                            <Button onClick={handleAssign} disabled={saving} className="flex-1">{saving ? 'שומר...' : 'שייך מפעיל'}</Button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminConstraints = ({ employees, constraints, settings, assignments }) => {
             const [offset, setOffset] = useState(0);
             const [isBlocking, setIsBlocking] = useState(false); 
             const [tor4youSlotsMap, setTor4youSlotsMap] = useState({});
             const [loadingSlots, setLoadingSlots] = useState(false);
+            const [assignSlot, setAssignSlot] = useState(null); // Modal state
 
             const todayStr = new Date().toISOString().slice(0, 10);
             const currentMonthStr = todayStr.slice(0, 7);
@@ -1267,11 +1316,12 @@
                 fetchWeekSlots();
             }, [offset]);
 
-            const getStatus = (d, hStr, customConstraints = constraints) => {
+            const getSlotInfo = (d, hStr, customConstraints = constraints) => {
                 const dStr = d.toISOString().slice(0,10);
                 const daySlots = tor4youSlotsMap[dStr] || [];
                 const slot = daySlots.find(s => s.time === hStr);
-                if (!slot) return -1; 
+                
+                if (!slot) return { status: -1 }; 
                 
                 const [curH, curM] = hStr.split(':').map(Number);
                 const slotStartMin = curH * 60 + curM;
@@ -1282,38 +1332,41 @@
                     const busy = customConstraints.some(c => {
                         if (c.employeeId !== emp.id || c.status === 'rejected') return false; 
                         if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
-                        
                         const [sH, sM] = (c.startTime || '00:00').split(':').map(Number); 
                         const [eH, eM] = (c.endTime || '00:00').split(':').map(Number);
-                        const cStartMin = sH * 60 + sM;
-                        const cEndMin = eH * 60 + eM;
-                        
-                        return c.date === dStr && (Math.max(slotStartMin, cStartMin) < Math.min(slotEndMin, cEndMin));
+                        return c.date === dStr && (Math.max(slotStartMin, (sH * 60 + sM)) < Math.min(slotEndMin, (eH * 60 + eM)));
                     });
                     if (!busy) count++;
                 });
-                return count;
+
+                // Check if assigned
+                const assignId = `${dStr}_${hStr.replace(':','')}`;
+                const assignment = assignments.find(a => a.id === assignId);
+
+                return { 
+                    status: count, 
+                    isBooked: slot.participants > 0, 
+                    customerName: slot.customerName,
+                    customerPhone: slot.customerPhone,
+                    dateStr: dStr,
+                    time: hStr,
+                    assignment: assignment
+                };
             };
             
             const handleStatus = async (id, status) => { 
                 await updateDoc(getDocRef('constraints', id), { status }); 
-
                 if (status === 'approved') {
                     const updatedConstraints = constraints.map(x => x.id === id ? { ...x, status: 'approved' } : x);
                     const toDelete = [];
                     const warnings = [];
-
                     days.forEach(d => {
                         const dStr = d.toISOString().slice(0,10);
                         const daySlots = tor4youSlotsMap[dStr] || [];
-                        
                         daySlots.forEach(slot => {
-                            if (getStatus(d, slot.time, updatedConstraints) === 0) {
-                                if (slot.participants > 0) {
-                                    warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
-                                } else {
-                                    toDelete.push({ slotid: slot.id, vfib: slot.vfib });
-                                }
+                            if (getSlotInfo(d, slot.time, updatedConstraints).status === 0) {
+                                if (slot.participants > 0) warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
+                                else toDelete.push({ slotid: slot.id, vfib: slot.vfib });
                             }
                         });
                     });
@@ -1321,26 +1374,17 @@
                     if (warnings.length === 0 && toDelete.length === 0) return;
 
                     let message = `זיהוי אוטומטי בעקבות אישור האילוץ:\n\n`;
-                    if (warnings.length > 0) {
-                        message += `🚨 שימו לב: ${warnings.length} תורים כבר הוזמנו בשעות שאין להן עובד כעת!\n(לא נמחקו, חובה ליצור קשר עם הלקוחות)\n`;
-                    }
-                    if (toDelete.length > 0) {
-                        message += `\n🗑️ נמצאו ${toDelete.length} תורים פנויים באתר שנותרו ללא אף מפעיל.\n\nהאם למחוק ולחסום אותם כעת ב-Tor4You?`;
-                    } else {
-                        return alert(message);
-                    }
+                    if (warnings.length > 0) message += `🚨 שימו לב: ${warnings.length} תורים כבר הוזמנו בשעות שאין להן עובד כעת!\n(לא נמחקו, חובה ליצור קשר עם הלקוחות)\n`;
+                    if (toDelete.length > 0) message += `\n🗑️ נמצאו ${toDelete.length} תורים פנויים באתר שנותרו ללא אף מפעיל.\n\nהאם למחוק ולחסום אותם כעת ב-Tor4You?`;
+                    else return alert(message);
 
                     if (confirm(message)) {
                         setIsBlocking(true);
                         try {
-                            const res = await fetch(TOR4YOU_DELETE_URL, { 
-                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: toDelete }) 
-                            });
+                            const res = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: toDelete }) });
                             const data = await res.json();
                             if (data.success) {
-                                let msg = `✅ נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`;
-                                if(data.errors && data.errors.length > 0) msg += `\n⚠️ שגיאה במחיקת ${data.errors.length} תורים נוספים.`;
-                                alert(msg);
+                                alert(`✅ נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`);
                                 setOffset(p=>p);
                             } else alert(`❌ שגיאה מהשרת: ${data.error}`);
                         } catch (e) { alert('שגיאת תקשורת: ' + e.message); } 
@@ -1352,47 +1396,30 @@
             const handleSyncAndBlock = async () => {
                 const toDelete = [];
                 const warnings = [];
-
                 days.forEach(d => {
                     const dStr = d.toISOString().slice(0,10);
                     const daySlots = tor4youSlotsMap[dStr] || [];
-                    
                     daySlots.forEach(slot => {
-                        if (getStatus(d, slot.time) === 0) {
-                            if (slot.participants > 0) {
-                                warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
-                            } else {
-                                toDelete.push({ slotid: slot.id, vfib: slot.vfib });
-                            }
+                        if (getSlotInfo(d, slot.time).status === 0) {
+                            if (slot.participants > 0) warnings.push(`${formatDateIL(dStr)} בשעה ${slot.time}`);
+                            else toDelete.push({ slotid: slot.id, vfib: slot.vfib });
                         }
                     });
                 });
 
-                if (warnings.length === 0 && toDelete.length === 0) {
-                    return alert('✅ היומן תקין לחלוטין! אין משבצות של 0 עובדים בשבוע המוצג.');
-                }
-
+                if (warnings.length === 0 && toDelete.length === 0) return alert('✅ היומן תקין לחלוטין! אין משבצות של 0 עובדים בשבוע המוצג.');
                 let message = `סריקת יומן הושלמה:\n\n`;
-                if (warnings.length > 0) {
-                    message += `🚨 שימו לב: ${warnings.length} תורים כבר הוזמנו בשעות שאין להן עובד!\n(הן לא יימחקו, חובה ליצור קשר עם הלקוח)\n`;
-                }
-                if (toDelete.length > 0) {
-                    message += `\n🗑️ נמצאו ${toDelete.length} משבצות זמן ריקות לחלוטין (ללא עובדים וללא הזמנות).\n\nהאם למחוק ולחסום אותן כעת באתר Tor4You?`;
-                } else {
-                    return alert(message);
-                }
+                if (warnings.length > 0) message += `🚨 שימו לב: ${warnings.length} תורים כבר הוזמנו בשעות שאין להן עובד!\n(הן לא יימחקו, חובה ליצור קשר עם הלקוח)\n`;
+                if (toDelete.length > 0) message += `\n🗑️ נמצאו ${toDelete.length} משבצות זמן ריקות לחלוטין (ללא עובדים וללא הזמנות).\n\nהאם למחוק ולחסום אותן כעת באתר Tor4You?`;
+                else return alert(message);
 
                 if (confirm(message)) {
                     setIsBlocking(true);
                     try {
-                        const res = await fetch(TOR4YOU_DELETE_URL, { 
-                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: toDelete }) 
-                        });
+                        const res = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: toDelete }) });
                         const data = await res.json();
                         if (data.success) {
-                            let msg = `✅ היומן סונכרן! נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`;
-                            if(data.errors && data.errors.length > 0) msg += `\n⚠️ שגיאה במחיקת ${data.errors.length} תורים נוספים.`;
-                            alert(msg);
+                            alert(`✅ היומן סונכרן! נמחקו בהצלחה ${data.deletedCount} תורים פנויים מהאתר.`);
                             setOffset(p=>p);
                         } else alert(`❌ שגיאה מהשרת: ${data.error}`);
                     } catch (e) { alert('שגיאת תקשורת: ' + e.message); } 
@@ -1424,7 +1451,7 @@
                         {renderConstraintsTable(activeCons, 'אין אילוצים פעילים להצגה')}
                     </Card>
 
-                    <Card title="מפת זמינות (סלוטים מדויקים של Tor4You / משך תור: 90 דק')">
+                    <Card title="מפת זמינות ושיבוצים (מסתנכרן מ-Tor4You)">
                         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                             <div className="flex items-center gap-4"><Button onClick={()=>setOffset(p=>p-1)}><ChevronRight size={16}/></Button><span className="flex items-center gap-2 font-bold text-lg">{formatDateIL(days[0].toISOString())} - {formatDateIL(days[6].toISOString())} {loadingSlots && <Loader className="w-4 h-4 animate-spin text-indigo-400"/>}</span><Button onClick={()=>setOffset(p=>p+1)}><ChevronLeft size={16}/></Button></div>
                             <Button onClick={handleSyncAndBlock} variant="outline" className="bg-yellow-500/10 border-yellow-500 text-yellow-500 hover:bg-yellow-500/20"><AlertTriangle size={18}/> סריקת התנגשויות וסנכרון יומן</Button>
@@ -1433,18 +1460,35 @@
                             {dynamicHours.map(h => {
                                 const endStr = addTime(h, 90);
                                 return (
-                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs">
-                                    <div className="bg-gray-800 p-2 rounded text-dynamic flex flex-col justify-center items-center">
+                                <div key={h} className="grid grid-cols-8 gap-1 mb-1 text-center text-xs h-20">
+                                    <div className="bg-gray-800 p-1 rounded text-dynamic flex flex-col justify-center items-center h-full">
                                         <span className="font-bold text-sm">{h}</span>
                                         <span className="opacity-50 text-[10px]">{h}-{endStr}</span>
                                     </div>
                                     {days.map((d,i) => {
-                                        const stat = getStatus(d, h);
+                                        const info = getSlotInfo(d, h);
+                                        if (info.status === -1) return <div key={i} className="p-1 rounded bg-gray-800/10 opacity-20 h-full"></div>;
+                                        
+                                        if (info.isBooked) {
+                                            const assignName = info.assignment ? (info.assignment.employeeId==='admin'?'מנהל':employees.find(e=>e.id===info.assignment.employeeId)?.name) : 'טרם שויך';
+                                            return (
+                                                <div key={i} onClick={()=>setAssignSlot(info)} className="p-1 rounded bg-indigo-900/60 ring-1 ring-indigo-500 text-white font-bold flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-800 transition-colors h-full">
+                                                    <span className="text-[10px] truncate w-full text-center leading-tight">{info.customerName}</span>
+                                                    <span className="text-[9px] opacity-70 truncate w-full text-center mb-1 leading-tight">{info.customerPhone}</span>
+                                                    <span className={`text-[9px] px-1 rounded ${info.assignment ? 'bg-green-600' : 'bg-red-500'}`}>{assignName}</span>
+                                                </div>
+                                            );
+                                        }
+
                                         let bg = 'bg-green-900/60';
-                                        if (stat === -1) bg = 'bg-gray-800/10 opacity-20';
-                                        else if (stat === 0) bg = 'bg-red-900/60 ring-1 ring-red-500';
-                                        else if (stat === 1) bg = 'bg-yellow-900/60';
-                                        return <div key={i} className={`p-2 rounded ${bg} text-white font-bold flex items-center justify-center`}>{stat > -1 ? stat : ''}</div>
+                                        if (info.status === 0) bg = 'bg-red-900/60 ring-1 ring-red-500';
+                                        else if (info.status === 1) bg = 'bg-yellow-900/60';
+                                        return (
+                                            <div key={i} onClick={()=>window.open('https://www.tor4you.co.il/', '_blank')} className={`p-1 rounded ${bg} text-white font-bold flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity h-full`}>
+                                                <span className="text-lg">{info.status}</span>
+                                                <span className="text-[9px] opacity-70">פנויים</span>
+                                            </div>
+                                        );
                                     })}
                                 </div>
                             )})}
@@ -1457,7 +1501,44 @@
                             {renderConstraintsTable(historyCons, 'אין היסטוריית אילוצים לחודש הנוכחי')}
                         </div>
                     </div>
+
+                    {assignSlot && <AssignModal slotData={assignSlot} onClose={()=>setAssignSlot(null)} employees={employees} settings={settings} />}
                 </div>
+            );
+        };
+
+        // --- סעיף 2: שיוך תורים ופאנל תורים עתידיים לעובד ---
+        const EmployeeUpcoming = ({ employee, assignments }) => {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const myAssignments = assignments.filter(a => a.employeeId === employee.id && a.date >= todayStr).sort((a,b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+
+            const handleWA = (phone, roomName) => {
+                if(!phone) return alert('אין טלפון ללקוח זה');
+                let cleanPhone = phone.replace(/\D/g, '');
+                if (cleanPhone.startsWith('0')) cleanPhone = '972' + cleanPhone.substring(1);
+                const empName = employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name;
+                const text = `שלום אני ${empName} המפעיל/ה שלך בחדר בריחה ${roomName}, אם אתם לא מוצאים את המקום או צריכים עזרה אני זמינה בשמחה :)`;
+                window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+            };
+
+            return (
+                <Card title="המשמרות הקרובות שלי">
+                    {myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין לך משמרות משויכות בעתיד הקרוב.</div>}
+                    <div className="grid md:grid-cols-2 gap-4">
+                        {myAssignments.map(a => (
+                            <div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center">
+                                <div>
+                                    <div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div>
+                                    <div className="text-sm">לקוח: {a.customerName} ({a.customerPhone})</div>
+                                    <div className="text-xs opacity-70">חדר: {a.room}</div>
+                                </div>
+                                <Button variant="success" onClick={()=>handleWA(a.customerPhone, a.room)} className="rounded-full w-12 h-12 p-0 flex items-center justify-center">
+                                    <MessageCircle size={20}/>
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
             );
         };
 
@@ -1499,18 +1580,19 @@
 
         // --- Employee Views ---
         const EmployeeDashboard = ({ employee, data, settings }) => {
-            const [tab, setTab] = useState('report');
+            const [tab, setTab] = useState('upcoming');
             const myPendingTasks = (data.tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
             const issuesCount = (data.issues||[]).filter(i => i.status === 'pending').length; 
 
             return (
                 <div className="space-y-6">
                     <div className="flex card-bg p-1 rounded-lg w-fit overflow-x-auto max-w-full">
-                        {[{id:'report', l:'דיווח והיסטוריה'}, {id:'constraints', l:'אילוצים'}, {id:'issues', l:'תקלות בחדרים', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל'}].map(t => (
+                        {[{id:'upcoming', l:'תורים עתידיים'}, {id:'report', l:'דיווח והיסטוריה'}, {id:'constraints', l:'אילוצים'}, {id:'issues', l:'תקלות בחדרים', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל'}].map(t => (
                             <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{t.l}{t.c > 0 && <span className={`${t.color} text-white text-xs px-1.5 py-0.5 rounded-full font-bold`}>{t.c}</span>}</button>
                         ))}
                     </div>
                     
+                    {tab==='upcoming' && <EmployeeUpcoming employee={employee} assignments={data.assignments||[]}/>}
                     {tab==='report' && (
                         <div className="space-y-8">
                             <GroupReportForm employeeId={employee.id} employees={data.employees} settings={settings} onSave={() => {}}/>
