@@ -48,6 +48,8 @@
         const TOR4YOU_FUNCTION_URL = `${API_URL}/getTor4YouAppts`;
 
         const getCollectionRef = (n) => collection(db, n); const getDocRef = (n, id) => doc(db, n, id);
+        const INITIAL_SETTINGS = { businessName: 'G-Room Escape', adminCode: 'admin123', primaryColor: '#030712', secondaryColor: '#ffffff', roomsList: 'סודו של הודיני', pricing: { basePrice2: 140, basePrice3: 125, basePrice4: 110, basePrice5: 100, basePrice6to8: 90, basePrice9to10: 80, discountKids: 15, discountEligible: 10 }, emailTemplate: { subject: 'G-Room: תלוש שכר {month}/{year}', body: 'היי {name},\nמצורף תלוש.\nבברכה,\nהנהלת G-Room' }};
+        
         const formatDateIL = (ds) => { const d = new Date(ds); return isNaN(d)?'':d.toLocaleDateString('he-IL', {day:'2-digit',month:'2-digit',year:'2-digit'}); };
         const formatDateTimeIL = (is) => { const d = new Date(is); return isNaN(d)?'':d.toLocaleDateString('he-IL', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); };
         const addTime = (ts, m) => { if(!ts) return ''; const [hh, mm] = ts.split(':').map(Number); const d = new Date(); d.setHours(hh, mm+m); return d.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit',hour12:false}); };
@@ -62,7 +64,7 @@
         const Input = ({ label, type="text", value, onChange, className="", ...props }) => (<div className={`flex flex-col gap-1 ${className}`}>{label && <label className="text-sm opacity-70 font-medium text-dynamic">{label}</label>}<input type={type} value={value} onChange={onChange} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors" {...props} /></div>);
         const StatusBadge = ({ status }) => { if(status==='approved') return <span className="text-green-400 flex items-center gap-1 text-xs"><CheckCircle size={14}/> אושר</span>; if(status==='rejected') return <span className="text-red-400 flex items-center gap-1 text-xs"><XCircle size={14}/> נדחה</span>; return <span className="text-yellow-400 flex items-center gap-1 text-xs"><Clock size={14}/> ממתין</span>; };
 
-        // --- Modals & Shared ---
+        // --- Modals ---
         const AddAppointmentModal = ({ slotData, onClose, onRefresh }) => {
             const [first, setFirst] = useState(''); const [last, setLast] = useState(''); const [cell, setCell] = useState(''); const [parts, setParts] = useState(2); const [saving, setSaving] = useState(false);
             const handleAdd = async (e) => {
@@ -70,11 +72,7 @@
                 try {
                     const res = await fetch(TOR4YOU_ADD_APPT_URL, { 
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ 
-                            slotid: slotData.id, vfib: slotData.vfib, 
-                            staff: slotData.staff, service: slotData.service,
-                            first, last, cell, participants: parts 
-                        }) 
+                        body: JSON.stringify({ slotid: slotData.id, vfib: slotData.vfib, staff: slotData.staff, service: slotData.service, first, last, cell, participants: parts }) 
                     });
                     const data = await res.json();
                     if(data.success) { alert('התור הוזמן בהצלחה ונרשם ב-Tor4You!'); onRefresh(); onClose(); } 
@@ -88,8 +86,7 @@
             const [selectedEmp, setSelectedEmp] = useState(''); const [saving, setSaving] = useState(false);
             const roomName = (settings.roomsList || 'סודו של הודיני').split(',')[0].trim();
             const handleAssign = async () => {
-                if(!selectedEmp) return alert('בחר עובד לשיוך');
-                setSaving(true);
+                if(!selectedEmp) return alert('בחר עובד לשיוך'); setSaving(true);
                 try {
                     const assignId = `${slotData.dateStr}_${slotData.time.replace(':','')}`;
                     await setDoc(getDocRef('assignments', assignId), { date: slotData.dateStr, time: slotData.time, customerName: slotData.customerName, customerPhone: slotData.customerPhone, employeeId: selectedEmp, room: roomName });
@@ -102,14 +99,12 @@
         const EditGroupModal = ({ group, onClose, employees }) => {
             const [pays, setPays] = useState(group.payments || {cash:0, credit:0, bit:0, transfer:0}); const [inv, setInv] = useState(group.invoiceNumber || ''); const [saving, setSaving] = useState(false);
             const empName = group.employeeId === 'admin' ? 'מנהל' : ((employees||[]).find(e => e.id === group.employeeId)?.name || 'לא ידוע');
-            const totalEntered = (Number(pays.cash)||0) + (Number(pays.credit)||0) + (Number(pays.bit)||0) + (Number(pays.transfer)||0);
-            const balance = group.finalPriceToPay - totalEntered;
+            const totalEntered = (Number(pays.cash)||0) + (Number(pays.credit)||0) + (Number(pays.bit)||0) + (Number(pays.transfer)||0); const balance = group.finalPriceToPay - totalEntered;
             const handleSave = async () => {
-                if (balance !== 0) return alert(`פער בתשלום! סה"כ העסקה: ₪${group.finalPriceToPay}. הוזן: ₪${totalEntered}`);
-                setSaving(true);
+                if (balance !== 0) return alert(`פער בתשלום! סה"כ העסקה: ₪${group.finalPriceToPay}. הוזן: ₪${totalEntered}`); setSaving(true);
                 try { await updateDoc(getDocRef('groups', group.id), { payments: { cash: Number(pays.cash)||0, credit: Number(pays.credit)||0, bit: Number(pays.bit)||0, transfer: Number(pays.transfer)||0 }, invoiceNumber: inv }); onClose(); } catch(e) { alert(e.message); setSaving(false); }
             };
-            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-xl border border-gray-700 shadow-2xl max-h-[95vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3"><h3 className="text-xl font-bold">פרטי דיווח - {group.customerName}</h3><button onClick={onClose} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4 bg-gray-800/50 p-4 rounded-lg"><div><span className="opacity-60">תאריך:</span> <strong className="float-left">{formatDateIL(group.date)} {group.time}</strong></div><div><span className="opacity-60">שחקנים:</span> <strong className="float-left">{group.totalPlayers}</strong></div></div><div className="bg-gray-800 p-4 rounded-lg mb-6 shadow-inner"><h4 className="font-bold border-b border-gray-700 pb-2 mb-3 text-indigo-400 flex items-center gap-2"><DollarSign size={16}/> תחשיב העסקה</h4><div className="space-y-2"><div className="flex justify-between text-sm"><span>מחיר בסיס:</span> <span>₪{group.totalOriginalPrice}</span></div>{group.totalDiscountAmount > 0 && <div className="flex justify-between text-sm text-red-400"><span>הנחות:</span> <span>-₪{group.totalDiscountAmount}</span></div>}<div className="flex justify-between text-lg font-bold border-t border-gray-700 pt-2 mt-2"><span>סה"כ לתשלום בקופה:</span> <span className="text-green-400">₪{group.finalPriceToPay}</span></div></div></div><div className="border-t border-gray-800 pt-4"><h4 className="font-bold mb-3 flex items-center gap-2"><Edit2 size={16}/> עריכת תשלום</h4><Input label="מספר חשבונית/קבלה" value={inv} onChange={e=>setInv(e.target.value)} className="mb-4" /><div className="grid grid-cols-2 gap-3"><Input label="מזומן" type="number" step="any" value={pays.cash} onChange={e=>setPays({...pays, cash: e.target.value})} /><Input label="אשראי" type="number" step="any" value={pays.credit} onChange={e=>setPays({...pays, credit: e.target.value})} /><Input label="ביט" type="number" step="any" value={pays.bit} onChange={e=>setPays({...pays, bit: e.target.value})} /><Input label="העברה" type="number" step="any" value={pays.transfer} onChange={e=>setPays({...pays, transfer: e.target.value})} /></div>{balance !== 0 && <div className="text-red-400 text-sm font-bold text-center mt-3 bg-red-900/20 p-2 rounded">יתרת פער: ₪{balance}</div>}<Button onClick={handleSave} className="w-full mt-4" disabled={saving || balance !== 0}>{saving ? 'מעדכן...' : 'שמור שינויים'}</Button></div></div></div>);
+            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-xl border border-gray-700 shadow-2xl max-h-[95vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3"><h3 className="text-xl font-bold">פרטי דיווח - {group.customerName}</h3><button onClick={onClose} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4 bg-gray-800/50 p-4 rounded-lg"><div><span className="opacity-60">תאריך ושעה:</span> <strong className="float-left">{formatDateIL(group.date)} {group.time}</strong></div><div><span className="opacity-60">חדר:</span> <strong className="float-left">{group.room}</strong></div><div><span className="opacity-60">שחקנים:</span> <strong className="float-left">{group.totalPlayers}</strong></div><div><span className="opacity-60">מפעיל:</span> <strong className="float-left">{empName}</strong></div><div><span className="opacity-60">הרכב קבוצה:</span> <strong className="float-left">{group.groupType}</strong></div><div><span className="opacity-60">מקור הגעה:</span> <strong className="float-left">{group.source}</strong></div></div><div className="bg-gray-800 p-4 rounded-lg mb-6 shadow-inner"><h4 className="font-bold border-b border-gray-700 pb-2 mb-3 text-indigo-400 flex items-center gap-2"><DollarSign size={16}/> תחשיב העסקה</h4><div className="space-y-2"><div className="flex justify-between text-sm"><span>מחיר בסיס:</span> <span>₪{group.totalOriginalPrice}</span></div>{!group.hasMegaLaan && group.totalDiscountAmount > 0 && <div className="flex justify-between text-sm text-red-400"><span>הנחות:</span> <span>-₪{group.totalDiscountAmount}</span></div>}{group.hasMegaLaan && <div className="flex justify-between text-sm text-blue-400"><span>שובר מגה לאן:</span> <span>₪{group.expectedMegaLaanRevenue} (צפי)</span></div>}{group.hasMegaLaan && group.isWeekendMegaLaan && <div className="flex justify-between text-sm text-yellow-400"><span>תוספת סופ"ש:</span> <span>₪{group.megaLaanPlayers * 10}</span></div>}<div className="flex justify-between text-lg font-bold border-t border-gray-700 pt-2 mt-2"><span>סה"כ לתשלום בקופה:</span> <span className="text-green-400">₪{group.finalPriceToPay}</span></div></div></div><div className="border-t border-gray-800 pt-4"><h4 className="font-bold mb-3 flex items-center gap-2"><Edit2 size={16}/> עריכת תשלום</h4><Input label="מספר חשבונית/קבלה" value={inv} onChange={e=>setInv(e.target.value)} className="mb-4" /><div className="grid grid-cols-2 gap-3"><Input label="מזומן" type="number" step="any" value={pays.cash} onChange={e=>setPays({...pays, cash: e.target.value})} /><Input label="אשראי" type="number" step="any" value={pays.credit} onChange={e=>setPays({...pays, credit: e.target.value})} /><Input label="ביט" type="number" step="any" value={pays.bit} onChange={e=>setPays({...pays, bit: e.target.value})} /><Input label="העברה" type="number" step="any" value={pays.transfer} onChange={e=>setPays({...pays, transfer: e.target.value})} /></div>{balance !== 0 && <div className="text-red-400 text-sm font-bold text-center mt-3 bg-red-900/20 p-2 rounded">יתרת פער: ₪{balance}</div>}<Button onClick={handleSave} className="w-full mt-4" disabled={saving || balance !== 0}>{saving ? 'מעדכן...' : 'שמור שינויים'}</Button></div></div></div>);
         };
 
         const EditExpenseModal = ({ expense, onClose, expenses }) => {
@@ -131,12 +126,9 @@
             useEffect(() => { const fetchAppts = async () => { setLoadingCustomers(true); setTor4youError(null); try { const res = await fetch(`${TOR4YOU_FUNCTION_URL}?date=${date}`); if(res.ok) { const data = await res.json(); if(data.customers && data.customers.length > 0) { setFetchedCustomers(data.customers); setIsManualCustomer(false); setCustomerName(data.customers[0].name); setTime(data.customers[0].time); setTotalPlayers(data.customers[0].players || 2); } else { setFetchedCustomers([]); setIsManualCustomer(true); setCustomerName(''); if (data.debugInfo) setTor4youError(JSON.stringify(data.debugInfo, null, 2)); } } } catch (e) { setFetchedCustomers([]); setIsManualCustomer(true); setTor4youError(e.message); } finally { setLoadingCustomers(false); } }; fetchAppts(); }, [date]);
             const handleCustomerChange = (e) => { const val = e.target.value; setCustomerName(val); if (val !== 'manual_entry') { const selectedCust = fetchedCustomers.find(c => c.name === val); if (selectedCust) { if(selectedCust.time) setTime(selectedCust.time); if(selectedCust.players) setTotalPlayers(selectedCust.players); } } };
             
-            const basePrice = getBasePrice(totalPlayers, settings.pricing); 
-            const totalOriginalPrice = basePrice * Number(totalPlayers);
-            const expectedMega = hasMegaLaan ? Math.ceil(Number(megaLaanPlayers) * basePrice * 0.78) : 0; 
-            const weekendMega = (hasMegaLaan && isWeekendMegaLaan) ? Number(megaLaanPlayers) * 10 : 0;
-            const discountK = settings.pricing?.discountKids || 15; 
-            const discountE = settings.pricing?.discountEligible || 10;
+            const basePrice = getBasePrice(totalPlayers, settings.pricing); const totalOriginalPrice = basePrice * Number(totalPlayers);
+            const expectedMega = hasMegaLaan ? Math.ceil(Number(megaLaanPlayers) * basePrice * 0.78) : 0; const weekendMega = (hasMegaLaan && isWeekendMegaLaan) ? Number(megaLaanPlayers) * 10 : 0;
+            const discountK = settings.pricing?.discountKids || 15; const discountE = settings.pricing?.discountEligible || 10;
             const totalDiscountAmount = hasMegaLaan ? 0 : (Number(kids) * basePrice * (discountK / 100) + Number(eligible) * basePrice * (discountE / 100));
             const finalPriceToPay = Math.ceil(hasMegaLaan ? ((Number(totalPlayers) - Number(megaLaanPlayers) > 0 ? (Number(totalPlayers) - Number(megaLaanPlayers)) * basePrice : 0) + weekendMega) : (totalOriginalPrice - totalDiscountAmount));
             const totalEnteredPayment = Object.values(payments).reduce((acc, val) => acc + (Number(val) || 0), 0); const paymentBalance = finalPriceToPay - totalEnteredPayment;
@@ -171,7 +163,75 @@
             );
         };
 
-        // --- Admin Dashboards ---
+        // --- Employee Panels ---
+        const EmployeeUpcoming = ({ employee, assignments, settings }) => {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const myAssignments = assignments.filter(a => a.employeeId === employee.id && (a.date||'') >= todayStr).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
+            const roomName = (settings?.roomsList || 'סודו של הודיני').split(',')[0].trim();
+            const handleWA = (phone) => {
+                if(!phone) return alert('אין טלפון ללקוח זה');
+                let cleanPhone = phone.replace(/\D/g, ''); if (cleanPhone.startsWith('0')) cleanPhone = '972' + cleanPhone.substring(1);
+                const empName = employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name;
+                const text = `שלום אני ${empName} המפעילה שלך בחדר בריחה ${roomName}, אם אתם לא מוצאים את המקום או צריכים עזרה אני זמינה בשמחה :)`;
+                window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+            };
+            return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="success" onClick={()=>handleWA(a.customerPhone)} className="rounded-full w-12 h-12 p-0"><MessageCircle size={24}/></Button></div>))}</div></Card>);
+        };
+        const EmployeeHistory = ({ employee, groups, shifts }) => {
+            const month = new Date().toISOString().slice(0, 7);
+            const myGroups = groups.filter(g => g.employeeId === employee.id && (g.date||'').startsWith(month)).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
+            return (<Card><div className="overflow-x-auto"><table className="w-full text-right text-sm whitespace-nowrap"><thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך ושעה</th><th>חדר</th><th>לקוח</th><th>שחקנים</th><th>לתשלום</th><th>נמחק?</th></tr></thead><tbody className="divide-y divide-gray-800 opacity-90">{myGroups.length === 0 && <tr><td colSpan="6" className="text-center py-4">לא דיווחת קבוצות החודש</td></tr>}{myGroups.map(g => (<tr key={g.id}><td className="py-2">{formatDateIL(g.date)} {g.time}</td><td>{g.room}</td><td>{g.customerName}</td><td>{g.totalPlayers}</td><td className="text-green-400">₪{g.finalPriceToPay}</td><td><button onClick={() => confirm("למחוק דיווח?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-400"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></Card>);
+        }
+        const EmployeeIssues = ({ employee, issues, settings }) => {
+            const [room, setRoom] = useState(''); const [desc, setDesc] = useState(''); const [saving, setSaving] = useState(false);
+            const pendingIssues = issues.filter(i => i.status === 'pending').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
+            const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
+            useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
+            const submitIssue = async (e) => { e.preventDefault(); setSaving(true); try { await addDoc(getCollectionRef('issues'), { room, description: desc, reportedBy: employee.id, reportedByName: employee.name, status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString() }); alert('התקלה דווחה!'); setDesc(''); } catch(err) { alert(err.message); } finally { setSaving(false); } };
+            return (<div className="grid md:grid-cols-2 gap-6"><Card title="דיווח על תקלה בחדר"><form onSubmit={submitIssue} className="space-y-4"><div className="flex flex-col gap-1"><label className="text-sm opacity-70">חדר</label><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>{roomList.map(r => <option key={r} value={r}>{r}</option>)}</select></div><div className="flex flex-col gap-1"><label className="text-sm opacity-70">תיאור (מה נשבר?)</label><textarea className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white h-32 resize-none" value={desc} onChange={e=>setDesc(e.target.value)} required></textarea></div><Button type="submit" variant="danger" disabled={saving} className="w-full">{saving ? 'שולח...' : 'שלח דיווח למנהל'}</Button></form></Card><Card title="תקלות פתוחות"><div className="space-y-3">{pendingIssues.length === 0 && <div className="text-center py-8 opacity-60">הכל תקין! 🎉</div>}{pendingIssues.map(i => (<div key={i.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700"><div className="flex justify-between items-start mb-2"><h4 className="font-bold text-lg text-indigo-300">{i.room}</h4><span className="text-xs opacity-60">{formatDateTimeIL(i.reportedAt)} ע"י {i.reportedByName}</span></div><p className="text-sm text-gray-300 whitespace-pre-wrap">{i.description}</p></div>))}</div></Card></div>);
+        };
+        const EmployeeTasks = ({ employee, tasks }) => {
+            const myTasks = tasks.filter(t => t.assigneeId === employee.id && t.status === 'pending');
+            const handleComplete = async (id) => { await updateDoc(getDocRef('tasks', id), { status: 'completed', completedAt: new Date().toISOString() }); alert('כל הכבוד!'); };
+            return (<Card title="המשימות שלי">{myTasks.length === 0 && <div className="text-center py-8 opacity-60">אין משימות 🎉</div>}<div className="space-y-4">{myTasks.map(t => (<div key={t.id} className="border border-gray-700 rounded-lg p-4 flex justify-between items-center bg-gray-800/30"><div><h3 className="font-bold text-lg mb-1">{t.description}</h3><div className="text-sm opacity-70 text-red-300">עד: {formatDateIL(t.deadline)}</div></div><Button onClick={() => handleComplete(t.id)} variant="success">ביצעתי</Button></div>))}</div></Card>);
+        };
+        const EmployeeConstraints = ({ employee, constraints }) => {
+            const [mode, setMode] = useState('single'); const [date, setDate] = useState(''); const [start, setStart] = useState(''); const [end, setEnd] = useState(''); const [sDate, setSDate] = useState(''); const [eDate, setEDate] = useState(''); const [note, setNote] = useState(''); const [editId, setEditId] = useState(null);
+            const submit = async (e) => { e.preventDefault(); const data = { employeeId: employee.id, type: mode, note, status: 'pending' }; if (mode === 'single') { data.date = date; data.startTime = start; data.endTime = end; } else { data.startDate = sDate; data.endDate = eDate; } if (editId) { await updateDoc(getDocRef('constraints', editId), data); setEditId(null); } else { await addDoc(getCollectionRef('constraints'), data); } alert('נשמר'); setNote(''); setDate(''); setStart(''); setEnd(''); };
+            const del = async (id) => { if(confirm("למחוק אילוץ?")) await deleteDoc(getDocRef('constraints', id)); };
+            const edit = (c) => { setEditId(c.id); setMode(c.type); setNote(c.note || ''); if(c.type==='single'){ setDate(c.date); setStart(c.startTime); setEnd(c.endTime); } else { setSDate(c.startDate); setEDate(c.endDate); } };
+            const myCons = constraints.filter(c => c.employeeId === employee.id).sort((a,b) => ((a.date || a.startDate)||'').localeCompare((b.date || b.startDate)||''));
+            return (<div className="grid md:grid-cols-2 gap-6"><Card title={editId ? "עריכת אילוץ" : "אילוץ חדש"}><div className="flex gap-2 mb-4"><button onClick={()=>setMode('single')} className={`flex-1 p-1 rounded ${mode==='single'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>יום בודד</button><button onClick={()=>setMode('range')} className={`flex-1 p-1 rounded ${mode==='range'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>חופשה</button></div><form onSubmit={submit} className="space-y-4">{mode==='single' ? (<><Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required/><div className="flex gap-4"><div className="flex-1"><Input label="שעת התחלה" type="time" step="900" value={start} onChange={e=>setStart(e.target.value)} required/></div><div className="flex-1"><Input label="שעת סיום" type="time" step="900" value={end} onChange={e=>setEnd(e.target.value)} required/></div></div></>) : (<><Input label="מ" type="date" value={sDate} onChange={e=>setSDate(e.target.value)} required/><Input label="עד" type="date" value={eDate} onChange={e=>setEDate(e.target.value)} required/></>)}<Input label="מהות האילוץ" value={note} onChange={e=>setNote(e.target.value)} /><div className="flex gap-2">{editId && <Button type="button" variant="secondary" onClick={()=>{setEditId(null); setNote('');}} className="flex-1">ביטול</Button>}<Button type="submit" className="flex-1">{editId ? 'עדכן' : 'שלח'}</Button></div></form></Card><Card title="האילוצים שלי"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="opacity-70 border-b border-gray-700"><tr><th>התחלה</th><th>סיום</th><th>שעות</th><th>סטטוס</th><th>פעולות</th></tr></thead><tbody className="divide-y divide-gray-800 opacity-90">{myCons.map(c => (<tr key={c.id}><td className="py-2">{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td><StatusBadge status={c.status || 'pending'} /></td><td className="flex gap-2 py-2">{c.status !== 'approved' && <button onClick={()=>edit(c)} className="text-indigo-400"><Edit2 size={14}/></button>}<button onClick={()=>del(c.id)} className="text-red-400"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></Card></div>);
+        };
+        const EmployeeProfile = ({ employee, shifts }) => {
+            const [open, setOpen] = useState(false); const [sending, setSending] = useState(false); const month = new Date().toISOString().slice(0, 7);
+            const myShifts = shifts.filter(s => s.employeeId === employee.id && (s.date||'').startsWith(month));
+            const wage = myShifts.reduce((acc, curr) => acc + (curr.gamesCount * (curr.wageAtTime || employee.wagePerGame || 0)), 0);
+            const request = async (e) => { e.preventDefault(); setSending(true); const fd = new FormData(e.target); try { await addDoc(getCollectionRef('requests'), { employeeId: employee.id, status: 'pending', date: new Date().toISOString(), newData: { phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), birthday: fd.get('birthday') } }); alert('נשלח'); setOpen(false); } catch(e) { alert(e.message); } finally { setSending(false); } };
+            return (<div className="grid md:grid-cols-2 gap-6"><Card><div className="text-center"><h2 className="text-2xl font-bold">{employee.name}</h2><p className="text-indigo-400">{employee.skills?.join(' • ')}</p></div><div className="mt-4 space-y-2 text-sm opacity-80"><div>טלפון: {employee.phone}</div><div>מייל: {employee.email}</div><div>יום הולדת: {formatDateIL(employee.birthday)}</div></div><Button variant="outline" className="w-full mt-4" onClick={()=>setOpen(true)}>עדכון פרטים</Button></Card><Card title={`שכר משוער (${month})`}><div className="text-center py-8"><div className="text-4xl font-bold text-green-400">₪{wage}</div><div className="text-gray-400 text-sm">{myShifts.length} משחקים</div></div></Card>{open && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700"><h3 className="text-xl font-bold mb-4">עדכון פרטים</h3><form onSubmit={request} className="space-y-4"><Input label="טלפון" name="phone" defaultValue={employee.phone} required /><Input label="מייל" name="email" defaultValue={employee.email} required /><Input label="כתובת" name="address" defaultValue={employee.address} required /><Input label="יום הולדת" name="birthday" type="date" defaultValue={employee.birthday} required /><div className="flex gap-2"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" className="flex-1" disabled={sending}>{sending ? 'שולח...' : 'שלח בקשה'}</Button></div></form></div></div>}</div>);
+        };
+        const EmployeeDashboard = ({ employee, data, settings }) => {
+            const [tab, setTab] = useState('upcoming');
+            const myPendingTasks = (data.tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
+            const issuesCount = (data.issues||[]).filter(i => i.status === 'pending').length; 
+            return (
+                <div className="space-y-6">
+                    <div className="flex card-bg p-1 rounded-lg w-fit overflow-x-auto max-w-full">
+                        {[{id:'upcoming', l:'תורים עתידיים'}, {id:'report', l:'דיווח והיסטוריה'}, {id:'constraints', l:'אילוצים'}, {id:'issues', l:'תקלות', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל'}].map(t => (
+                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{t.l}{t.c > 0 && <span className={`${t.color} text-white text-xs px-1.5 py-0.5 rounded-full font-bold`}>{t.c}</span>}</button>
+                        ))}
+                    </div>
+                    {tab==='upcoming' && <EmployeeUpcoming employee={employee} assignments={data.assignments||[]} settings={settings}/>}
+                    {tab==='report' && <div className="space-y-8"><GroupReportForm employeeId={employee.id} employees={data.employees} settings={settings} onSave={()=>{}}/><div className="border-t border-gray-800 pt-8 mt-8"><h2 className="text-2xl font-bold mb-6">היסטוריית הדיווחים שלי</h2><EmployeeHistory employee={employee} groups={data.groups||[]} shifts={data.shifts||[]}/></div></div>}
+                    {tab==='constraints' && <EmployeeConstraints employee={employee} constraints={data.constraints||[]}/>}
+                    {tab==='issues' && <EmployeeIssues employee={employee} issues={data.issues||[]} settings={settings}/>}
+                    {tab==='tasks' && <EmployeeTasks employee={employee} tasks={data.tasks||[]}/>}
+                    {tab==='profile' && <EmployeeProfile employee={employee} shifts={data.shifts||[]}/>}
+                </div>
+            );
+        };
+
+        // --- Admin Panels ---
         const AdminConstraints = ({ employees, constraints, settings, assignments }) => {
             const [offset, setOffset] = useState(0); const [isBlocking, setIsBlocking] = useState(false); const [tor4youSlotsMap, setTor4youSlotsMap] = useState({}); const [loadingSlots, setLoadingSlots] = useState(false); const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); 
             const todayStr = new Date().toISOString().slice(0, 10); const currentMonthStr = todayStr.slice(0, 7);
@@ -191,25 +251,9 @@
 
             const getSlotInfo = (d, hStr, customConstraints = constraints) => {
                 const dStr = d.toISOString().slice(0,10); 
-                
-                // סינון שעות פעילות המוגדרות במערכת (מניעת תורי רפאים בשישי-שבת)
-                const dayName = d.toLocaleDateString('en-US', {weekday:'long'});
-                const biz = settings.openingHours[dayName];
-                if (!biz) return { status: -1 }; 
-                const [openH, openM] = biz.start.split(':').map(Number);
-                const [closeH, closeM] = biz.end.split(':').map(Number);
-                const [curH, curM] = hStr.split(':').map(Number);
-                const openMin = openH * 60 + openM;
-                let closeMin = closeH * 60 + closeM;
-                if (closeMin <= openMin) closeMin += 24 * 60; // עסק פתוח אחרי חצות
-                let curMin = curH * 60 + curM;
-                if (curH < openH && closeMin > 24*60) curMin += 24 * 60; 
-                if (curMin < openMin || curMin >= closeMin) return { status: -1 };
-
                 const daySlots = tor4youSlotsMap[dStr] || []; const slot = daySlots.find(s => s.time === hStr);
                 if (!slot) return { status: -1 }; 
-                
-                const slotStartMin = curH * 60 + curM; const slotEndMin = slotStartMin + 90; 
+                const [curH, curM] = hStr.split(':').map(Number); const slotStartMin = curH * 60 + curM; const slotEndMin = slotStartMin + 90; 
                 let count = 0;
                 employees.forEach(emp => {
                     const busy = customConstraints.some(c => {
@@ -428,6 +472,40 @@
             return (<div className="space-y-6"><div className="flex justify-between"><h2 className="text-2xl font-bold">ניהול עובדים</h2><Button onClick={()=>{setEdit(null); setOpen(true);}}><Plus size={18}/> הוסף עובד</Button></div><div className="grid md:grid-cols-3 gap-4">{employees.map(e => (<Card key={e.id} className="relative group hover:border-indigo-500"><div className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 flex gap-2"><button onClick={()=>{setEdit(e); setOpen(true);}} className="bg-gray-900 p-1 rounded text-indigo-400">ערוך</button><button onClick={()=>confirm("למחוק?") && deleteDoc(getDocRef('employees', e.id))} className="bg-gray-900 p-1 rounded text-red-400"><Trash2 size={16}/></button></div><h3 className="font-bold text-lg">{e.name}</h3><p className="text-sm opacity-70">{e.phone}</p><div className="mt-2 text-sm opacity-60"><div>קוד: {e.code}</div><div>תעריף: ₪{e.wagePerGame}</div></div></Card>))}</div>{open && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold mb-4">{edit ? 'עריכה' : 'חדש'}</h3><form onSubmit={save} className="space-y-4"><div className="grid grid-cols-2 gap-4"><Input label="שם" name="name" required defaultValue={edit?.name}/><Input label="טלפון" name="phone" required defaultValue={edit?.phone}/><Input label="מייל" name="email" type="email" required defaultValue={edit?.email}/><Input label="קוד" name="code" required defaultValue={edit?.code}/><Input label="כתובת" name="address" className="col-span-2" defaultValue={edit?.address}/><Input label="יום הולדת" name="birthday" type="date" defaultValue={edit?.birthday}/><Input label="שכר למשחק" name="wagePerGame" type="number" required defaultValue={edit?.wagePerGame}/><Input label="הסמכות (מופרד בפסיק)" name="skills" className="col-span-2" defaultValue={edit?.skills?.join(', ')}/></div><div className="flex gap-2"><input type="checkbox" name="form101" defaultChecked={edit?.form101}/> <label>טופס 101</label></div><div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'שמור בענן'}</Button></div></form></div></div>}</div>);
         };
 
+        const AdminTasks = ({ employees, tasks }) => {
+            const [desc, setDesc] = useState(''); const [deadline, setDeadline] = useState(''); const [empId, setEmpId] = useState('');
+            const addTask = async (e) => { e.preventDefault(); await addDoc(getCollectionRef('tasks'), { description: desc, deadline, assigneeId: empId, status: 'pending', createdAt: new Date().toISOString() }); alert('משימה נוספה'); setDesc(''); setDeadline(''); setEmpId(''); };
+            const delTask = async (id) => { if(confirm("למחוק משימה?")) await deleteDoc(getDocRef('tasks', id)); };
+            const pending = tasks.filter(t => t.status === 'pending'); const completed = tasks.filter(t => t.status === 'completed').sort((a,b)=>b.completedAt.localeCompare(a.completedAt)).slice(0, 3);
+            return (
+                <div className="space-y-6">
+                    <Card title="הוספת משימה חדשה"><form onSubmit={addTask} className="space-y-4"><Input label="תיאור המשימה" value={desc} onChange={e=>setDesc(e.target.value)} required /><div className="grid grid-cols-2 gap-4"><Input label="דדליין" type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} required /><div className="flex flex-col gap-1"><label className="text-sm opacity-70">בחר עובד</label><select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" required value={empId} onChange={e=>setEmpId(e.target.value)}><option value="">-- בחר --</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div></div><Button type="submit">הוסף משימה</Button></form></Card>
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <Card title="ממתין לביצוע">{pending.length === 0 && <p className="text-gray-500">אין משימות</p>}{pending.map(t => { const emp = employees.find(e => e.id === t.assigneeId); return <div key={t.id} className="border-b border-gray-800 py-2 flex justify-between items-center"><div><div className="font-bold">{t.description}</div><div className="text-sm opacity-70">אחראי: {emp?.name} | יעד: {formatDateIL(t.deadline)}</div></div><button onClick={()=>delTask(t.id)} className="text-red-400"><Trash2 size={16}/></button></div> })}</Card>
+                        <Card title="היסטוריה (3 אחרונות)">{completed.length === 0 && <p className="text-gray-500">אין משימות</p>}{completed.map(t => { const emp = employees.find(e => e.id === t.assigneeId); return <div key={t.id} className="border-b border-gray-800 py-2 flex justify-between items-center"><div><div className="font-bold text-green-400 line-through">{t.description}</div><div className="text-sm opacity-70">בוצע ע"י: {emp?.name}</div></div><button onClick={()=>delTask(t.id)} className="text-red-400"><Trash2 size={16}/></button></div> })}</Card>
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminRequests = ({ requests, employees }) => {
+            const handle = async (req, status) => { try { if(status === 'approved') await updateDoc(getDocRef('employees', req.employeeId), req.newData); await updateDoc(getDocRef('requests', req.id), { status }); } catch(e) { alert(e.message); } };
+            return (<div className="space-y-4"><h2 className="text-xl font-bold text-dynamic">בקשות עדכון</h2>{requests.length === 0 && <p className="text-gray-500">אין בקשות חדשות</p>}{requests.map(r => { const emp = employees.find(e => e.id === r.employeeId); return <Card key={r.id} className="border-r-4 border-yellow-500 flex justify-between items-start"><div><h3 className="font-bold text-lg mb-1">{emp?.name}</h3><div className="text-sm opacity-70 space-y-1"><p>טלפון: {r.newData.phone}</p><p>מייל: {r.newData.email}</p><p>כתובת: {r.newData.address}</p><p>יום הולדת: {formatDateIL(r.newData.birthday)}</p></div></div><div className="flex gap-2"><Button variant="success" onClick={()=>handle(r, 'approved')}><Check size={16}/></Button><Button variant="danger" onClick={()=>handle(r, 'rejected')}><XIcon size={16}/></Button></div></Card> })}</div>);
+        };
+
+        const AdminSettings = ({ settings }) => {
+            const update = async (k, v) => await setDoc(getDocRef('app_settings', 'global'), { ...settings, [k]: v }, { merge: true });
+            const handleTemplate = async (k, v) => await update('emailTemplate', { ...settings.emailTemplate, [k]: v });
+            const handlePricing = async (k, v) => await update('pricing', { ...settings.pricing, [k]: Number(v) });
+            return (
+                <div className="grid md:grid-cols-2 gap-6">
+                    <Card title="מחירון והנחות"><div className="space-y-4"><h4 className="font-bold text-sm text-indigo-400">בסיס למשתתף</h4><div className="grid grid-cols-2 gap-2"><Input label="2 שחקנים" type="number" value={settings.pricing?.basePrice2} onChange={e => handlePricing('basePrice2', e.target.value)} /><Input label="3 שחקנים" type="number" value={settings.pricing?.basePrice3} onChange={e => handlePricing('basePrice3', e.target.value)} /><Input label="4 שחקנים" type="number" value={settings.pricing?.basePrice4} onChange={e => handlePricing('basePrice4', e.target.value)} /><Input label="5 שחקנים" type="number" value={settings.pricing?.basePrice5} onChange={e => handlePricing('basePrice5', e.target.value)} /><Input label="6-8 שחקנים" type="number" value={settings.pricing?.basePrice6to8} onChange={e => handlePricing('basePrice6to8', e.target.value)} /><Input label="9-10 שחקנים" type="number" value={settings.pricing?.basePrice9to10} onChange={e => handlePricing('basePrice9to10', e.target.value)} /></div><h4 className="font-bold text-sm text-indigo-400 mt-4">אחוזי הנחה</h4><div className="grid grid-cols-2 gap-2"><Input label="ילדים (%)" type="number" value={settings.pricing?.discountKids} onChange={e => handlePricing('discountKids', e.target.value)} /><Input label="זכאים (%)" type="number" value={settings.pricing?.discountEligible} onChange={e => handlePricing('discountEligible', e.target.value)} /></div></div></Card>
+                    <div className="space-y-6"><Card title="כללי"><div className="space-y-4"><Input label="שם העסק" value={settings.businessName} onChange={e => update('businessName', e.target.value)} /><Input label="קוד כניסה למנהל" value={settings.adminCode} onChange={e => update('adminCode', e.target.value)} /><Input label="רשימת חדרים (מופרד בפסיק)" value={settings.roomsList} onChange={e => update('roomsList', e.target.value)} /></div></Card><Card title="עיצוב"><div className="space-y-4"><div className="space-y-1"><label className="text-sm opacity-70">צבע רקע (ראשי)</label><input type="color" value={settings.primaryColor} onChange={e => update('primaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div><div className="space-y-1"><label className="text-sm opacity-70">צבע טקסט (משני)</label><input type="color" value={settings.secondaryColor} onChange={e => update('secondaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div><div className="space-y-1"><label className="text-sm opacity-70">לוגו (URL)</label><input className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white" value={settings.logo || ''} onChange={e => update('logo', e.target.value)} /></div></div></Card></div>
+                    <Card title="תבנית אימייל לשכר"><div className="space-y-4"><Input label="נושא" value={settings.emailTemplate?.subject||''} onChange={e => handleTemplate('subject', e.target.value)} /><div className="space-y-1"><label className="text-sm opacity-70">תוכן (משתנים: {`{name}, {month}, {year}`})</label><textarea className="w-full bg-gray-800 border border-gray-700 rounded p-2 h-32 text-white" value={settings.emailTemplate?.body||''} onChange={e => handleTemplate('body', e.target.value)} /></div><Input label="מייל העסק" value={settings.senderEmail||''} onChange={e => update('senderEmail', e.target.value)} /></div></Card>
+                </div>
+            );
+        };
+
         const AdminDashboard = ({ data, settings }) => {
             const [tab, setTab] = useState('groups');
             const pendingReq = (data.requests || []).filter(r => r.status === 'pending');
@@ -437,7 +515,7 @@
             return (
                 <div className="space-y-6">
                     <div className="flex flex-wrap gap-2 border-b border-dynamic pb-2">
-                        {[{id:'groups', l:'הכנסות', i:Coins}, {id:'expenses', l:'דוח פיננסי', i:LineChart}, {id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות שכר', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'issues', l:'תקלות', i:Wrench}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
+                        {[{id:'groups', l:'הכנסות', i:Coins}, {id:'expenses', l:'דוח פיננסי', i:LineChart}, {id:'employees', l:'עובדים', i:Users}, {id:'shifts', l:'דוחות שכר', i:FileText}, {id:'constraints', l:'זמינות', i:Calendar}, {id:'issues', l:'תקלות', i:Wrench}, {id:'tasks', l:'משימות', i:CheckSquare}, {id:'settings', l:'הגדרות', i:Settings}].map(m => 
                             <button key={m.id} onClick={()=>setTab(m.id)} className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${tab===m.id ? 'bg-indigo-600/10 text-indigo-400 border-b-2 border-indigo-500' : 'opacity-70 hover:opacity-100'}`}>
                                 <m.i size={18} /> {m.l} 
                                 {m.id === 'constraints' && pendingCons.length > 0 && <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold ml-1">{pendingCons.length}</span>}
@@ -454,6 +532,7 @@
                         {tab==='shifts' && <AdminReports employees={data.employees||[]} shifts={data.shifts||[]} settings={settings}/>}
                         {tab==='constraints' && <AdminConstraints employees={data.employees||[]} constraints={data.constraints||[]} settings={settings} assignments={data.assignments||[]}/>}
                         {tab==='issues' && <AdminIssues issues={data.issues||[]} employees={data.employees||[]} settings={settings}/>}
+                        {tab==='tasks' && <AdminTasks employees={data.employees||[]} tasks={data.tasks||[]}/>}
                         {tab==='settings' && <AdminSettings settings={settings}/>}
                         {tab==='requests' && <AdminRequests requests={pendingReq} employees={data.employees||[]}/>}
                     </div>
