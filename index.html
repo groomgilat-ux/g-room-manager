@@ -57,7 +57,14 @@
         const exportToXLS = (html, fn) => { const blob=new Blob([`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse;width:100%;font-family:Arial;}th,td{border:1px solid #ccc;padding:5px;text-align:right;}</style></head><body dir="rtl"><table>${html}</table></body></html>`], {type:'application/vnd.ms-excel'}); const link=document.createElement("a"); link.href=URL.createObjectURL(blob); link.download=fn; document.body.appendChild(link); link.click(); };
         const timeoutPromise = (p, ms=5000) => Promise.race([p, new Promise((_, r)=>setTimeout(()=>r(new Error("Timeout")), ms))]);
 
-        const INITIAL_SETTINGS = { businessName: 'G-Room Escape', adminCode: 'admin123', primaryColor: '#030712', secondaryColor: '#ffffff', roomsList: 'סודו של הודיני', pricing: { basePrice2: 140, basePrice3: 125, basePrice4: 110, basePrice5: 100, basePrice6to8: 90, basePrice9to10: 80, discountKids: 15, discountEligible: 10 }, emailTemplate: { subject: 'G-Room: תלוש שכר {month}/{year}', body: 'היי {name},\nמצורף תלוש.\nבברכה,\nהנהלת G-Room' }};
+        const generateTimeOptions = () => { const options = []; for(let i=0; i<24; i++) { for(let j=0; j<60; j+=15) { options.push(`${i.toString().padStart(2,'0')}:${j.toString().padStart(2,'0')}`); } } return options; };
+
+        const INITIAL_SETTINGS = { 
+            businessName: 'G-Room Escape', adminCode: 'admin123', primaryColor: '#030712', secondaryColor: '#ffffff', roomsList: 'סודו של הודיני', 
+            pricing: { basePrice2: 140, basePrice3: 125, basePrice4: 110, basePrice5: 100, basePrice6to8: 90, basePrice9to10: 80, discountKids: 15, discountEligible: 10 }, 
+            emailTemplate: { subject: 'G-Room: תלוש שכר {month}/{year}', body: 'היי {name},\nמצורף תלוש.\nבברכה,\nהנהלת G-Room' },
+            openingHours: { Sunday: { start: '10:00', end: '23:00' }, Monday: { start: '10:00', end: '23:00' }, Tuesday: { start: '10:00', end: '23:00' }, Wednesday: { start: '10:00', end: '23:00' }, Thursday: { start: '10:00', end: '01:00' }, Friday: { start: '09:00', end: '15:00' }, Saturday: { start: '18:00', end: '01:00' } }
+        };
 
         const Button = ({ children, onClick, variant='primary', className='', disabled, ...props }) => { const v = { primary: "bg-indigo-600 hover:bg-indigo-700 text-white", secondary: "bg-gray-700 hover:bg-gray-600 text-white", danger: "bg-red-600 hover:bg-red-700 text-white", success: "bg-green-600 hover:bg-green-700 text-white", outline: "border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20" }; return <button onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>; };
         const Card = ({ title, children, className='' }) => (<div className={`card-bg rounded-xl p-6 shadow-xl ${className}`}>{title && <h3 className="text-xl font-bold text-dynamic mb-4 border-b border-gray-700 pb-2">{title}</h3>}<div className="text-dynamic">{children}</div></div>);
@@ -169,7 +176,7 @@
         // --- Employee Panels ---
         const EmployeeUpcoming = ({ employee, assignments, settings }) => {
             const todayStr = new Date().toISOString().slice(0, 10);
-            const myAssignments = assignments.filter(a => a.employeeId === employee.id && (a.date||'') >= todayStr).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
+            const myAssignments = (assignments||[]).filter(a => a.employeeId === employee.id && (a.date||'') >= todayStr).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
             const roomName = (settings?.roomsList || 'סודו של הודיני').split(',')[0].trim();
             const handleWA = (phone) => {
                 if(!phone) return alert('אין טלפון ללקוח זה');
@@ -178,23 +185,25 @@
                 const text = `שלום אני ${empName} המפעילה שלך בחדר בריחה ${roomName}, אם אתם לא מוצאים את המקום או צריכים עזרה אני זמינה בשמחה :)`;
                 window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
             };
-            return (<Card title="המשמרות הקרובות שלי (שויכו אלי)">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="success" onClick={()=>handleWA(a.customerPhone)} className="rounded-full w-12 h-12 p-0 shadow-lg hover:scale-105"><MessageCircle size={24}/></Button></div>))}</div></Card>);
+            return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="success" onClick={()=>handleWA(a.customerPhone)} className="rounded-full w-12 h-12 p-0"><MessageCircle size={24}/></Button></div>))}</div></Card>);
         };
+// --- סוף חלק 1 ---
+// --- התחלת חלק 2 ---
         const EmployeeHistory = ({ employee, groups, shifts }) => {
             const month = new Date().toISOString().slice(0, 7);
-            const myGroups = groups.filter(g => g.employeeId === employee.id && (g.date||'').startsWith(month)).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
+            const myGroups = (groups||[]).filter(g => g.employeeId === employee.id && (g.date||'').startsWith(month)).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
             return (<Card><div className="overflow-x-auto"><table className="w-full text-right text-sm whitespace-nowrap"><thead className="opacity-70 border-b border-gray-700"><tr><th>תאריך ושעה</th><th>חדר</th><th>לקוח</th><th>שחקנים</th><th>לתשלום</th><th>נמחק?</th></tr></thead><tbody className="divide-y divide-gray-800 opacity-90">{myGroups.length === 0 && <tr><td colSpan="6" className="text-center py-4">לא דיווחת קבוצות החודש</td></tr>}{myGroups.map(g => (<tr key={g.id}><td className="py-2">{formatDateIL(g.date)} {g.time}</td><td>{g.room}</td><td>{g.customerName}</td><td>{g.totalPlayers}</td><td className="text-green-400">₪{g.finalPriceToPay}</td><td><button onClick={() => confirm("למחוק דיווח?") && deleteDoc(getDocRef('groups', g.id))} className="text-red-400"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></Card>);
         }
         const EmployeeIssues = ({ employee, issues, settings }) => {
             const [room, setRoom] = useState(''); const [desc, setDesc] = useState(''); const [saving, setSaving] = useState(false);
-            const pendingIssues = issues.filter(i => i.status === 'pending').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
+            const pendingIssues = (issues||[]).filter(i => i.status === 'pending').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
             const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
             useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
             const submitIssue = async (e) => { e.preventDefault(); setSaving(true); try { await addDoc(getCollectionRef('issues'), { room, description: desc, reportedBy: employee.id, reportedByName: employee.name, status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString() }); alert('התקלה דווחה!'); setDesc(''); } catch(err) { alert(err.message); } finally { setSaving(false); } };
             return (<div className="grid md:grid-cols-2 gap-6"><Card title="דיווח על תקלה בחדר"><form onSubmit={submitIssue} className="space-y-4"><div className="flex flex-col gap-1"><label className="text-sm opacity-70">חדר</label><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>{roomList.map(r => <option key={r} value={r}>{r}</option>)}</select></div><div className="flex flex-col gap-1"><label className="text-sm opacity-70">תיאור (מה נשבר?)</label><textarea className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white h-32 resize-none" value={desc} onChange={e=>setDesc(e.target.value)} required></textarea></div><Button type="submit" variant="danger" disabled={saving} className="w-full">{saving ? 'שולח...' : 'שלח דיווח למנהל'}</Button></form></Card><Card title="תקלות פתוחות"><div className="space-y-3">{pendingIssues.length === 0 && <div className="text-center py-8 opacity-60">הכל תקין! 🎉</div>}{pendingIssues.map(i => (<div key={i.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700"><div className="flex justify-between items-start mb-2"><h4 className="font-bold text-lg text-indigo-300">{i.room}</h4><span className="text-xs opacity-60">{formatDateTimeIL(i.reportedAt)} ע"י {i.reportedByName}</span></div><p className="text-sm text-gray-300 whitespace-pre-wrap">{i.description}</p></div>))}</div></Card></div>);
         };
         const EmployeeTasks = ({ employee, tasks }) => {
-            const myTasks = tasks.filter(t => t.assigneeId === employee.id && t.status === 'pending');
+            const myTasks = (tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
             const handleComplete = async (id) => { await updateDoc(getDocRef('tasks', id), { status: 'completed', completedAt: new Date().toISOString() }); alert('כל הכבוד!'); };
             return (<Card title="המשימות שלי">{myTasks.length === 0 && <div className="text-center py-8 opacity-60">אין משימות 🎉</div>}<div className="space-y-4">{myTasks.map(t => (<div key={t.id} className="border border-gray-700 rounded-lg p-4 flex justify-between items-center bg-gray-800/30"><div><h3 className="font-bold text-lg mb-1">{t.description}</h3><div className="text-sm opacity-70 text-red-300">עד: {formatDateIL(t.deadline)}</div></div><Button onClick={() => handleComplete(t.id)} variant="success">ביצעתי</Button></div>))}</div></Card>);
         };
@@ -203,12 +212,12 @@
             const submit = async (e) => { e.preventDefault(); const data = { employeeId: employee.id, type: mode, note, status: 'pending' }; if (mode === 'single') { data.date = date; data.startTime = start; data.endTime = end; } else { data.startDate = sDate; data.endDate = eDate; } if (editId) { await updateDoc(getDocRef('constraints', editId), data); setEditId(null); } else { await addDoc(getCollectionRef('constraints'), data); } alert('נשמר'); setNote(''); setDate(''); setStart(''); setEnd(''); };
             const del = async (id) => { if(confirm("למחוק אילוץ?")) await deleteDoc(getDocRef('constraints', id)); };
             const edit = (c) => { setEditId(c.id); setMode(c.type); setNote(c.note || ''); if(c.type==='single'){ setDate(c.date); setStart(c.startTime); setEnd(c.endTime); } else { setSDate(c.startDate); setEDate(c.endDate); } };
-            const myCons = constraints.filter(c => c.employeeId === employee.id).sort((a,b) => ((a.date || a.startDate)||'').localeCompare((b.date || b.startDate)||''));
-            return (<div className="grid md:grid-cols-2 gap-6"><Card title={editId ? "עריכת אילוץ" : "אילוץ חדש"}><div className="flex gap-2 mb-4"><button onClick={()=>setMode('single')} className={`flex-1 p-1 rounded ${mode==='single'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>יום בודד</button><button onClick={()=>setMode('range')} className={`flex-1 p-1 rounded ${mode==='range'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>חופשה</button></div><form onSubmit={submit} className="space-y-4">{mode==='single' ? (<><Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required/><div className="flex gap-4"><div className="flex-1"><Input label="שעת התחלה" type="time" step="900" value={start} onChange={e=>setStart(e.target.value)} required/></div><div className="flex-1"><Input label="שעת סיום" type="time" step="900" value={end} onChange={e=>setEnd(e.target.value)} required/></div></div></>) : (<><Input label="מ" type="date" value={sDate} onChange={e=>setSDate(e.target.value)} required/><Input label="עד" type="date" value={eDate} onChange={e=>setEDate(e.target.value)} required/></>)}<Input label="מהות האילוץ" value={note} onChange={e=>setNote(e.target.value)} /><div className="flex gap-2">{editId && <Button type="button" variant="secondary" onClick={()=>{setEditId(null); setNote('');}} className="flex-1">ביטול</Button>}<Button type="submit" className="flex-1">{editId ? 'עדכן' : 'שלח'}</Button></div></form></Card><Card title="האילוצים שלי"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="opacity-70 border-b border-gray-700"><tr><th>התחלה</th><th>סיום</th><th>שעות</th><th>סטטוס</th><th>פעולות</th></tr></thead><tbody className="divide-y divide-gray-800 opacity-90">{myCons.map(c => (<tr key={c.id}><td className="py-2">{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td><StatusBadge status={c.status || 'pending'} /></td><td className="flex gap-2 py-2">{c.status !== 'approved' && <button onClick={()=>edit(c)} className="text-indigo-400"><Edit2 size={14}/></button>}<button onClick={()=>del(c.id)} className="text-red-400"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></Card></div>);
+            const myCons = (constraints||[]).filter(c => c.employeeId === employee.id).sort((a,b) => ((a.date || a.startDate)||'').localeCompare((b.date || b.startDate)||''));
+            return (<div className="grid md:grid-cols-2 gap-6"><Card title={editId ? "עריכת אילוץ" : "אילוץ חדש"}><div className="flex gap-2 mb-4"><button onClick={()=>setMode('single')} className={`flex-1 p-1 rounded ${mode==='single'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>יום בודד</button><button onClick={()=>setMode('range')} className={`flex-1 p-1 rounded ${mode==='range'?'bg-indigo-600 text-white':'text-dynamic card-bg'}`}>חופשה</button></div><form onSubmit={submit} className="space-y-4">{mode==='single' ? (<><Input label="תאריך" type="date" value={date} onChange={e=>setDate(e.target.value)} required/><div className="flex gap-4"><div className="flex-1"><Input label="שעת התחלה" type="time" step="900" value={start} onChange={e=>setStart(e.target.value)} required/></div><div className="flex-1"><Input label="שעת סיום" type="time" step="900" value={end} onChange={e=>setEnd(e.target.value)} required/></div></div></>) : (<><Input label="מ" type="date" value={sDate} onChange={e=>setSDate(e.target.value)} required/><Input label="עד" type="date" value={eDate} onChange={e=>setEDate(e.target.value)} required/></>)}<Input label="מהות האילוץ" value={note} onChange={e=>setNote(e.target.value)} /><div className="flex gap-2">{editId && <Button type="button" variant="secondary" onClick={()=>{setEditId(null); setNote('');}} className="flex-1">ביטול</Button>}<Button type="submit" className="flex-1">{editId ? 'עדכן' : 'שלח'}</Button></div></form></Card><Card title="האילוצים שלי"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="opacity-70 border-b border-gray-700"><tr><th>התחלה</th><th>סיום</th><th>שעות</th><th>סטטוס</th><th>פעולות</th></tr></thead><tbody className="divide-y divide-gray-800 opacity-90">{myCons.length === 0 && <tr><td colSpan="5" className="text-center py-4">אין אילוצים</td></tr>}{myCons.map(c => (<tr key={c.id}><td className="py-2">{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td><StatusBadge status={c.status || 'pending'} /></td><td className="flex gap-2 py-2">{c.status !== 'approved' && <button onClick={()=>edit(c)} className="text-indigo-400"><Edit2 size={14}/></button>}<button onClick={()=>del(c.id)} className="text-red-400"><Trash2 size={14}/></button></td></tr>))}</tbody></table></div></Card></div>);
         };
         const EmployeeProfile = ({ employee, shifts }) => {
             const [open, setOpen] = useState(false); const [sending, setSending] = useState(false); const month = new Date().toISOString().slice(0, 7);
-            const myShifts = shifts.filter(s => s.employeeId === employee.id && (s.date||'').startsWith(month));
+            const myShifts = (shifts||[]).filter(s => s.employeeId === employee.id && (s.date||'').startsWith(month));
             const wage = myShifts.reduce((acc, curr) => acc + (curr.gamesCount * (curr.wageAtTime || employee.wagePerGame || 0)), 0);
             const request = async (e) => { e.preventDefault(); setSending(true); const fd = new FormData(e.target); try { await addDoc(getCollectionRef('requests'), { employeeId: employee.id, status: 'pending', date: new Date().toISOString(), newData: { phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), birthday: fd.get('birthday') } }); alert('נשלח'); setOpen(false); } catch(e) { alert(e.message); } finally { setSending(false); } };
             return (<div className="grid md:grid-cols-2 gap-6"><Card><div className="text-center"><h2 className="text-2xl font-bold">{employee.name}</h2><p className="text-indigo-400">{employee.skills?.join(' • ')}</p></div><div className="mt-4 space-y-2 text-sm opacity-80"><div>טלפון: {employee.phone}</div><div>מייל: {employee.email}</div><div>יום הולדת: {formatDateIL(employee.birthday)}</div></div><Button variant="outline" className="w-full mt-4" onClick={()=>setOpen(true)}>עדכון פרטים</Button></Card><Card title={`שכר משוער (${month})`}><div className="text-center py-8"><div className="text-4xl font-bold text-green-400">₪{wage}</div><div className="text-gray-400 text-sm">{myShifts.length} משחקים</div></div></Card>{open && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700"><h3 className="text-xl font-bold mb-4">עדכון פרטים</h3><form onSubmit={request} className="space-y-4"><Input label="טלפון" name="phone" defaultValue={employee.phone} required /><Input label="מייל" name="email" defaultValue={employee.email} required /><Input label="כתובת" name="address" defaultValue={employee.address} required /><Input label="יום הולדת" name="birthday" type="date" defaultValue={employee.birthday} required /><div className="flex gap-2"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" className="flex-1" disabled={sending}>{sending ? 'שולח...' : 'שלח בקשה'}</Button></div></form></div></div>}</div>);
@@ -233,15 +242,14 @@
                 </div>
             );
         };
-        // --- עד כאן חלק 1 ---
-        // --- התחלת חלק 2 ---
+
         // --- Admin Panels ---
         const AdminConstraints = ({ employees, constraints, settings, assignments }) => {
             const [offset, setOffset] = useState(0); const [isBlocking, setIsBlocking] = useState(false); const [tor4youSlotsMap, setTor4youSlotsMap] = useState({}); const [loadingSlots, setLoadingSlots] = useState(false); const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); 
             const todayStr = new Date().toISOString().slice(0, 10); const currentMonthStr = todayStr.slice(0, 7);
             
-            const activeCons = useMemo(() => constraints.filter(c => (c.type==='range'?c.endDate:c.date||'') >= todayStr || c.status === 'pending').sort((a,b)=>((a.type==='range'?a.startDate:a.date)||'').localeCompare((b.type==='range'?b.startDate:b.date)||'')), [constraints]);
-            const historyCons = useMemo(() => constraints.filter(c => (c.type==='range'?c.endDate:c.date||'') < todayStr && c.status !== 'pending' && (c.type==='range'?c.endDate:c.date||'').startsWith(currentMonthStr)).sort((a,b)=>((b.type==='range'?b.startDate:b.date)||'').localeCompare((a.type==='range'?a.startDate:a.date)||'')), [constraints]);
+            const activeCons = useMemo(() => (constraints||[]).filter(c => (c.type==='range'?c.endDate:c.date||'') >= todayStr || c.status === 'pending').sort((a,b)=>((a.type==='range'?a.startDate:a.date)||'').localeCompare((b.type==='range'?b.startDate:b.date)||'')), [constraints]);
+            const historyCons = useMemo(() => (constraints||[]).filter(c => (c.type==='range'?c.endDate:c.date||'') < todayStr && c.status !== 'pending' && (c.type==='range'?c.endDate:c.date||'').startsWith(currentMonthStr)).sort((a,b)=>((b.type==='range'?b.startDate:b.date)||'').localeCompare((a.type==='range'?a.startDate:a.date)||'')), [constraints]);
             const days = useMemo(() => Array.from({length:7}, (_,i) => { const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d; }), [offset]);
             
             const dynamicHours = useMemo(() => { const times = new Set(); Object.values(tor4youSlotsMap).forEach(arr => arr.forEach(s => times.add(s.time))); if (times.size === 0) return ["10:00", "11:30", "13:00", "14:30", "16:00", "17:30", "19:00", "20:30", "22:00"]; return Array.from(times).sort(); }, [tor4youSlotsMap]);
@@ -254,12 +262,30 @@
             useEffect(() => { fetchWeekSlots(); }, [offset]);
 
             const getSlotInfo = (d, hStr, customConstraints = constraints) => {
-                const dStr = d.toISOString().slice(0,10); const daySlots = tor4youSlotsMap[dStr] || []; const slot = daySlots.find(s => s.time === hStr);
+                const dStr = d.toISOString().slice(0,10); 
+                
+                // סינון ימי ושעות פעילות למניעת תורי רפאים!
+                const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const dayName = daysOfWeek[d.getDay()];
+                const biz = settings.openingHours?.[dayName] || { start: '00:00', end: '23:59' };
+                if (!biz) return { status: -1 }; 
+                const [openH, openM] = biz.start.split(':').map(Number);
+                const [closeH, closeM] = biz.end.split(':').map(Number);
+                const [curH, curM] = hStr.split(':').map(Number);
+                const openMin = openH * 60 + openM;
+                let closeMin = closeH * 60 + closeM;
+                if (closeMin <= openMin) closeMin += 24 * 60; // לילה
+                let curMin = curH * 60 + curM;
+                if (curH < openH && closeMin > 24*60) curMin += 24 * 60; 
+                if (curMin < openMin || curMin >= closeMin) return { status: -1 };
+
+                const daySlots = tor4youSlotsMap[dStr] || []; const slot = daySlots.find(s => s.time === hStr);
                 if (!slot) return { status: -1 }; 
-                const [curH, curM] = hStr.split(':').map(Number); const slotStartMin = curH * 60 + curM; const slotEndMin = slotStartMin + 90; 
+                
+                const slotStartMin = curH * 60 + curM; const slotEndMin = slotStartMin + 90; 
                 let count = 0;
-                employees.forEach(emp => {
-                    const busy = customConstraints.some(c => {
+                (employees||[]).forEach(emp => {
+                    const busy = (customConstraints||[]).some(c => {
                         if (c.employeeId !== emp.id || c.status === 'rejected') return false; 
                         if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
                         const [sH, sM] = (c.startTime || '00:00').split(':').map(Number); const [eH, eM] = (c.endTime || '00:00').split(':').map(Number);
@@ -268,13 +294,13 @@
                     if (!busy) count++;
                 });
                 const assignId = `${dStr}_${hStr.replace(':','')}`;
-                return { status: count, isBooked: slot.isBooked, customerName: slot.customerName, customerPhone: slot.customerPhone, dateStr: dStr, time: hStr, id: slot.id, vfib: slot.vfib, staff: slot.staff, service: slot.service, assignment: assignments.find(a => a.id === assignId) };
+                return { status: count, isBooked: slot.isBooked, customerName: slot.customerName, customerPhone: slot.customerPhone, dateStr: dStr, time: hStr, id: slot.id, vfib: slot.vfib, staff: slot.staff, service: slot.service, assignment: (assignments||[]).find(a => a.id === assignId) };
             };
             
             const handleStatus = async (id, status) => { 
                 await updateDoc(getDocRef('constraints', id), { status }); 
                 if (status === 'approved') {
-                    const updatedConstraints = constraints.map(x => x.id === id ? { ...x, status: 'approved' } : x);
+                    const updatedConstraints = (constraints||[]).map(x => x.id === id ? { ...x, status: 'approved' } : x);
                     const toDelete = []; const warnings = [];
                     days.forEach(d => {
                         const dStr = d.toISOString().slice(0,10); const daySlots = tor4youSlotsMap[dStr] || [];
@@ -321,7 +347,7 @@
 
             const renderConstraintsTable = (consList, isEmptyMsg) => (
                 <div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="text-gray-400 border-b border-gray-700"><tr><th>עובד</th><th>התחלה</th><th>סיום</th><th>שעות</th><th>סיבה</th><th>סטטוס</th><th>פעולות</th></tr></thead><tbody className="opacity-90">{consList.length === 0 && <tr><td colSpan="7" className="text-center py-4">{isEmptyMsg}</td></tr>}
-                    {consList.map(c => { const emp = employees.find(e => e.id === c.employeeId); return <tr key={c.id} className="border-b border-gray-800 hover:bg-white/5"><td className="py-2 font-bold">{emp?.name}</td><td>{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td>{c.note}</td><td><StatusBadge status={c.status || 'pending'}/></td><td className="flex gap-2 py-1"><Button size="sm" variant={c.status==='approved'?"secondary":"success"} onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant={c.status==='rejected'?"secondary":"danger"} onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button><button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button></td></tr> })}
+                    {consList.map(c => { const emp = (employees||[]).find(e => e.id === c.employeeId); return <tr key={c.id} className="border-b border-gray-800 hover:bg-white/5"><td className="py-2 font-bold">{emp?.name}</td><td>{formatDateIL(c.type==='range' ? c.startDate : c.date)}</td><td>{formatDateIL(c.type==='range' ? c.endDate : c.date)}</td><td>{c.type==='range' ? 'חופש' : `${c.startTime}-${c.endTime}`}</td><td>{c.note}</td><td><StatusBadge status={c.status || 'pending'}/></td><td className="flex gap-2 py-1"><Button size="sm" variant={c.status==='approved'?"secondary":"success"} onClick={()=>handleStatus(c.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant={c.status==='rejected'?"secondary":"danger"} onClick={()=>handleStatus(c.id, 'rejected')}><XIcon size={14}/></Button><button onClick={()=>deleteDoc(getDocRef('constraints', c.id))} className="text-red-500 mr-2"><Trash2 size={14}/></button></td></tr> })}
                 </tbody></table></div>
             );
 
@@ -360,7 +386,7 @@
 
         const AdminGroups = ({ groups, employees, settings, shifts }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); const [showManual, setShowManual] = useState(false); const [viewingGroup, setViewingGroup] = useState(null); const [filters, setFilters] = useState({ emp: '', room: '', type: '' }); 
-            const monthGroups = groups.filter(g => (g.date||'').startsWith(month));
+            const monthGroups = (groups||[]).filter(g => (g.date||'').startsWith(month));
             const totalCash = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.cash) || 0), 0); const totalCredit = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.credit) || 0), 0); const totalBit = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.bit) || 0), 0); const totalTransfer = monthGroups.reduce((acc, g) => acc + (Number(g.payments?.transfer) || 0), 0); const totalMega = monthGroups.reduce((acc, g) => acc + (Number(g.expectedMegaLaanRevenue) || 0), 0);
             const totalRevenue = totalCash + totalCredit + totalBit + totalTransfer + totalMega; 
             const filteredGroups = monthGroups.filter(g => (!filters.emp || g.employeeId === filters.emp) && (!filters.room || g.room === filters.room) && (!filters.type || g.groupType === filters.type)).sort((a,b) => new Date((b.date||'')+'T'+(b.time||'')) - new Date((a.date||'')+'T'+(a.time||'')));
@@ -417,7 +443,6 @@
                         {activeExpenses.map((ex) => { const catIndex = Object.keys(expByCategory).indexOf(ex.category); const dotColor = graphColors[catIndex % graphColors.length]; return (<tr key={ex.id} className="hover:bg-indigo-900/30 cursor-pointer" onClick={()=>setEditingExpense(ex)}><td className="py-2 font-bold">{ex.name}</td><td className="flex items-center gap-2 mt-2"><div className="w-2 h-2 rounded-full" style={{backgroundColor: dotColor}}></div>{ex.category}</td><td className="opacity-70">{ex.invoiceNumber || '-'}</td><td>₪{ex.totalAmount}</td><td className="text-xs opacity-70">{ex.fromMonth} עד {ex.toMonth}</td><td className="font-bold text-orange-400">₪{ex.monthlyAmount.toFixed(1)}</td><td><button onClick={(e) => { e.stopPropagation(); confirm("למחוק הוצאה?") && deleteDoc(getDocRef('expenses', ex.id)); }} className="text-red-400 p-1"><Trash2 size={14}/></button></td></tr>)})}
                     </tbody></table></div></Card>
                     {showForm && (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold mb-4">רישום הוצאה</h3><form onSubmit={handleAddExpense} className="space-y-4"><Input label="תיאור ההוצאה" value={expName} onChange={e=>setExpName(e.target.value)} required /><div className="flex flex-col gap-1"><label className="text-sm opacity-70">קטגוריה</label><div className="flex gap-2 flex-wrap mb-1">{quickCats.map(c => (<button key={c} type="button" onClick={()=>setExpCategory(c)} className={`text-xs px-3 py-1 rounded-full border ${expCategory===c ? 'bg-indigo-600 border-indigo-500' : 'bg-gray-800'}`}>{c}</button>))}</div><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={expCategory} onChange={e=>setExpCategory(e.target.value)}>{dynamicCats.map(c => <option key={c} value={c}>{c}</option>)}<option value="אחר">אחר (הזן קטגוריה חדשה)...</option></select></div>{expCategory === 'אחר' && <Input label="הזן שם קטגוריה חדשה" value={customCategory} onChange={e=>setCustomCategory(e.target.value)} required />}<Input label="מספר חשבונית/קבלה" value={expInvoice} onChange={e=>setExpInvoice(e.target.value)} /><Input label="סכום כולל לתשלום (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required /><div className="bg-indigo-900/20 p-3 rounded border border-indigo-500/30 text-xs">הסכום יתחלק שווה בשווה:</div><div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div><div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setShowForm(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'הוסף הוצאה'}</Button></div></form></div></div>)}
-                    {editingExpense && <EditExpenseModal expense={editingExpense} expenses={expenses} onClose={()=>setEditingExpense(null)} />}
                 </div>
             );
         };
@@ -542,6 +567,106 @@
                 </div>
             );
         };
+
+        function GRoomApp() {
+            const [user, setUser] = useState(null);
+            const [currentUser, setCurrentUser] = useState(null);
+            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [], issues: [], assignments: [] });
+            const [settings, setSettings] = useState(INITIAL_SETTINGS);
+            const [loading, setLoading] = useState(true);
+            const [login, setLogin] = useState({ code: '', empId: '' });
+            const [dbConn, setDbConn] = useState(false);
+
+            useEffect(() => {
+                const init = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
+                init();
+                return onAuthStateChanged(auth, setUser);
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                setLoading(true);
+                const unsub = [
+                    onSnapshot(getCollectionRef('employees'), s => { setData(p => ({...p, employees: s.docs.map(d => ({id: d.id, ...d.data()}))})); setDbConn(true); }, e => setDbConn(false)),
+                    onSnapshot(getCollectionRef('shifts'), s => setData(p => ({...p, shifts: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('constraints'), s => setData(p => ({...p, constraints: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('requests'), s => setData(p => ({...p, requests: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('tasks'), s => setData(p => ({...p, tasks: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('expenses'), s => setData(p => ({...p, expenses: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('issues'), s => setData(p => ({...p, issues: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('assignments'), s => setData(p => ({...p, assignments: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('app_settings'), s => {
+                        if (!s.empty) { const d = s.docs.find(doc => doc.id === 'global') || s.docs[0]; if (d) setSettings(prev => ({...prev, ...d.data()})); }
+                        setLoading(false);
+                    })
+                ];
+                return () => unsub.forEach(u => u());
+            }, [user]);
+
+            useEffect(() => {
+                const r = document.documentElement.style;
+                r.setProperty('--app-bg', settings.primaryColor || '#030712');
+                r.setProperty('--app-text', settings.secondaryColor || '#ffffff');
+                const isLight = settings.primaryColor === '#ffffff' || settings.primaryColor === '#f3f4f6';
+                r.setProperty('--app-card-bg', isLight ? '#e5e7eb' : 'rgba(255, 255, 255, 0.05)');
+                r.setProperty('--app-border', isLight ? '#d1d5db' : 'rgba(255, 255, 255, 0.1)');
+            }, [settings]);
+
+            const doLogin = () => {
+                if ((login.empId === 'admin' && login.code === settings.adminCode) || (login.empId === 'admin' && (data.employees||[]).length === 0 && login.code === 'admin123')) {
+                    setCurrentUser({ role: 'admin', name: 'מנהל המערכת', id: 'admin' });
+                } else {
+                    const emp = (data.employees||[]).find(e => e.id === login.empId);
+                    if (emp && emp.code === login.code) setCurrentUser({ role: 'employee', data: emp, id: emp.id, name: emp.name });
+                    else alert("פרטי התחברות שגויים");
+                }
+            };
+
+            if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-indigo-500"><Loader className="animate-spin w-10 h-10" /></div>;
+
+            if (!currentUser) return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="max-w-md w-full card-bg p-8 rounded-2xl text-center relative shadow-2xl">
+                        <div className={`absolute top-4 right-4 w-3 h-3 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></div>
+                        <div className="mb-8">
+                            {settings.logo ? <img src={settings.logo} className="h-24 mx-auto mb-4 object-contain"/> : <div className="h-24 w-24 bg-indigo-900/50 rounded-full mx-auto flex items-center justify-center mb-4"><Lock size={40} className="text-indigo-400"/></div>}
+                            <h1 className="text-3xl font-bold text-dynamic">{settings.businessName}</h1>
+                            <p className="opacity-60 text-sm mt-2">מערכת ניהול ERP</p>
+                        </div>
+                        <div className="space-y-4">
+                            <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500" value={login.empId} onChange={e => setLogin({...login, empId: e.target.value})}>
+                                <option value="">-- בחר משתמש --</option>
+                                <option value="admin">🔒 מנהל מערכת</option>
+                                {(data.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                            </select>
+                            <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
+                            <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
+                        </div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 8.4 - עיגול מחירים, וואטסאפ והזמנה חכמה</div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen font-sans flex flex-col">
+                    <header className="card-bg border-b border-dynamic sticky top-0 z-50 h-16 flex items-center justify-between px-6 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            {settings.logo && <img src={settings.logo} className="h-8 w-8 rounded object-cover"/>}
+                            <span className="font-bold text-xl text-dynamic hidden sm:block">{settings.businessName}</span>
+                            <span className="text-xs bg-indigo-900/50 text-indigo-200 px-3 py-1 rounded-full border border-indigo-500/30 flex items-center gap-2">
+                                {currentUser.role === 'admin' ? 'מנהל מערכת' : `שלום, ${currentUser.name}`}
+                                <div className={`w-2 h-2 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                            </span>
+                        </div>
+                        <Button variant="ghost" onClick={() => {setCurrentUser(null); setLogin({code:'', empId:''});}} className="text-red-400 hover:bg-red-900/20"><LogOut size={18} /> <span className="hidden sm:inline">יציאה</span></Button>
+                    </header>
+                    <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
+                        {currentUser.role === 'admin' ? <AdminDashboard data={data} settings={settings} /> : <EmployeeDashboard employee={currentUser} data={data} settings={settings} />}
+                    </main>
+                </div>
+            );
+        }
 
         const root = createRoot(document.getElementById('root'));
         root.render(<GRoomApp />);
