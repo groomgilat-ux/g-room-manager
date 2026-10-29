@@ -23,6 +23,7 @@
         body { background-color: var(--app-bg); color: var(--app-text); font-family: sans-serif; transition: background-color 0.3s, color 0.3s; }
         .card-bg { background-color: var(--app-card-bg); border: 1px solid var(--app-border); }
         .text-dynamic { color: var(--app-text) !important; }
+        .border-dynamic { border-color: var(--app-border) !important; }
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
         .fade-in { animation: fadeIn 0.3s ease-in; } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         input[type="date"], input[type="month"], input[type="time"], select { color-scheme: dark; }
@@ -48,17 +49,7 @@
         const TOR4YOU_FUNCTION_URL = `${API_URL}/getTor4YouAppts`;
 
         const getCollectionRef = (n) => collection(db, n); const getDocRef = (n, id) => doc(db, n, id);
-        const formatDateIL = (ds) => { const d = new Date(ds); return isNaN(d)?'':d.toLocaleDateString('he-IL', {day:'2-digit',month:'2-digit',year:'2-digit'}); };
-        const formatDateTimeIL = (is) => { const d = new Date(is); return isNaN(d)?'':d.toLocaleDateString('he-IL', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); };
-        const addTime = (ts, m) => { if(!ts) return ''; const [hh, mm] = ts.split(':').map(Number); const d = new Date(); d.setHours(hh, mm+m); return d.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit',hour12:false}); };
-        const getBasePrice = (pStr, pr) => { const p = Number(pStr)||0; if(p<=2) return Number(pr?.basePrice2)||140; if(p===3) return Number(pr?.basePrice3)||125; if(p===4) return Number(pr?.basePrice4)||110; if(p===5) return Number(pr?.basePrice5)||100; if(p>=6 && p<=8) return Number(pr?.basePrice6to8)||90; return Number(pr?.basePrice9to10)||80; };
-        const getMonthsDifference = (s, e) => { if(!s||!e) return 1; const d1=new Date(s+'-01'), d2=new Date(e+'-01'); let m=(d2.getFullYear()-d1.getFullYear())*12; m-=d1.getMonth(); m+=d2.getMonth(); return m<=0?1:m+1; };
-        const isMonthInRange = (tm, sm, em) => tm>=sm && tm<=em;
-        const exportToXLS = (html, fn) => { const blob=new Blob([`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse;width:100%;font-family:Arial;}th,td{border:1px solid #ccc;padding:5px;text-align:right;}</style></head><body dir="rtl"><table>${html}</table></body></html>`], {type:'application/vnd.ms-excel'}); const link=document.createElement("a"); link.href=URL.createObjectURL(blob); link.download=fn; document.body.appendChild(link); link.click(); };
-        const timeoutPromise = (p, ms=5000) => Promise.race([p, new Promise((_, r)=>setTimeout(()=>r(new Error("Timeout")), ms))]);
-
-        const generateTimeOptions = () => { const options = []; for(let i=0; i<24; i++) { for(let j=0; j<60; j+=15) { options.push(`${i.toString().padStart(2,'0')}:${j.toString().padStart(2,'0')}`); } } return options; };
-
+        
         const INITIAL_SETTINGS = { 
             businessName: 'G-Room Escape', adminCode: 'admin123', primaryColor: '#030712', secondaryColor: '#ffffff', roomsList: 'סודו של הודיני', 
             pricing: { basePrice2: 140, basePrice3: 125, basePrice4: 110, basePrice5: 100, basePrice6to8: 90, basePrice9to10: 80, discountKids: 15, discountEligible: 10 }, 
@@ -66,27 +57,43 @@
             openingHours: { Sunday: { start: '10:00', end: '23:00' }, Monday: { start: '10:00', end: '23:00' }, Tuesday: { start: '10:00', end: '23:00' }, Wednesday: { start: '10:00', end: '23:00' }, Thursday: { start: '10:00', end: '01:00' }, Friday: { start: '09:00', end: '15:00' }, Saturday: { start: '18:00', end: '01:00' } }
         };
 
+        const formatDateIL = (ds) => { const d = new Date(ds); return isNaN(d)?'':d.toLocaleDateString('he-IL', {day:'2-digit',month:'2-digit',year:'2-digit'}); };
+        const formatDateTimeIL = (is) => { const d = new Date(is); return isNaN(d)?'':d.toLocaleDateString('he-IL', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); };
+        const addTime = (ts, m) => { if(!ts) return ''; const [hh, mm] = ts.split(':').map(Number); const d = new Date(); d.setHours(hh, mm+m); return d.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit',hour12:false}); };
+        const getBasePrice = (pStr, pr) => { const p = Number(pStr)||0; if(p<=2) return Number(pr?.basePrice2)||140; if(p===3) return Number(pr?.basePrice3)||125; if(p===4) return Number(pr?.basePrice4)||110; if(p===5) return Number(pr?.basePrice5)||100; if(p>=6 && p<=8) return Number(pr?.basePrice6to8)||90; return Number(pr?.basePrice9to10)||80; };
+        const getMonthsDifference = (s, e) => { if(!s||!e) return 1; const d1=new Date(s+'-01'), d2=new Date(e+'-01'); let m=(d2.getFullYear()-d1.getFullYear())*12; m-=d1.getMonth(); m+=d2.getMonth(); return m<=0?1:m+1; };
+        const isMonthInRange = (tm, sm, em) => tm>=sm && tm<=em;
+        const generateTimeOptions = () => { const options = []; for(let i=0; i<24; i++) { for(let j=0; j<60; j+=15) { options.push(`${i.toString().padStart(2,'0')}:${j.toString().padStart(2,'0')}`); } } return options; };
+        const exportToXLS = (html, fn) => { const blob=new Blob([`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse;width:100%;font-family:Arial;}th,td{border:1px solid #ccc;padding:5px;text-align:right;}</style></head><body dir="rtl"><table>${html}</table></body></html>`], {type:'application/vnd.ms-excel'}); const link=document.createElement("a"); link.href=URL.createObjectURL(blob); link.download=fn; document.body.appendChild(link); link.click(); };
+        const timeoutPromise = (p, ms=5000) => Promise.race([p, new Promise((_, r)=>setTimeout(()=>r(new Error("Timeout")), ms))]);
+
         const Button = ({ children, onClick, variant='primary', className='', disabled, ...props }) => { const v = { primary: "bg-indigo-600 hover:bg-indigo-700 text-white", secondary: "bg-gray-700 hover:bg-gray-600 text-white", danger: "bg-red-600 hover:bg-red-700 text-white", success: "bg-green-600 hover:bg-green-700 text-white", outline: "border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20" }; return <button onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>; };
         const Card = ({ title, children, className='' }) => (<div className={`card-bg rounded-xl p-6 shadow-xl ${className}`}>{title && <h3 className="text-xl font-bold text-dynamic mb-4 border-b border-gray-700 pb-2">{title}</h3>}<div className="text-dynamic">{children}</div></div>);
         const Input = ({ label, type="text", value, onChange, className="", ...props }) => (<div className={`flex flex-col gap-1 ${className}`}>{label && <label className="text-sm opacity-70 font-medium text-dynamic">{label}</label>}<input type={type} value={value} onChange={onChange} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors" {...props} /></div>);
         const StatusBadge = ({ status }) => { if(status==='approved') return <span className="text-green-400 flex items-center gap-1 text-xs"><CheckCircle size={14}/> אושר</span>; if(status==='rejected') return <span className="text-red-400 flex items-center gap-1 text-xs"><XCircle size={14}/> נדחה</span>; return <span className="text-yellow-400 flex items-center gap-1 text-xs"><Clock size={14}/> ממתין</span>; };
 
         // --- Modals ---
-        const AddAppointmentModal = ({ slotData, onClose, onRefresh }) => {
-            const [first, setFirst] = useState(''); const [last, setLast] = useState(''); const [cell, setCell] = useState(''); const [parts, setParts] = useState(2); const [saving, setSaving] = useState(false);
+        const AddAppointmentModal = ({ slotData, onClose, onRefresh, employees }) => {
+            const [first, setFirst] = useState(''); const [last, setLast] = useState(''); const [cell, setCell] = useState(''); const [email, setEmail] = useState(''); const [parts, setParts] = useState(2); const [saving, setSaving] = useState(false); const [selectedEmp, setSelectedEmp] = useState('');
             const handleAdd = async (e) => {
                 e.preventDefault(); setSaving(true);
                 try {
                     const res = await fetch(TOR4YOU_ADD_APPT_URL, { 
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ slotid: slotData.id, vfib: slotData.vfib, staff: slotData.staff, service: slotData.service, first, last, cell, participants: parts }) 
+                        body: JSON.stringify({ slotid: slotData.id, vfib: slotData.vfib, staff: slotData.staff, service: slotData.service, first, last, cell, email, participants: parts }) 
                     });
                     const data = await res.json();
-                    if(data.success) { alert('התור הוזמן בהצלחה ונרשם ב-Tor4You!'); onRefresh(); onClose(); } 
+                    if(data.success) { 
+                        if(selectedEmp) {
+                            const assignId = `${slotData.dateStr}_${slotData.time.replace(':','')}`;
+                            await setDoc(getDocRef('assignments', assignId), { date: slotData.dateStr, time: slotData.time, customerName: `${first} ${last}`.trim(), customerPhone: cell, employeeId: selectedEmp, room: 'סודו של הודיני' });
+                        }
+                        alert('התור הוזמן בהצלחה ונרשם ב-Tor4You!'); onRefresh(); onClose(); 
+                    } 
                     else alert(`שגיאה מהשרת: ${data.error}`);
                 } catch (err) { alert('שגיאת תקשורת: ' + err.message); } finally { setSaving(false); }
             };
-            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}><h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">הזמנת תור חדש</h3><div className="text-sm opacity-80 mb-4 bg-gray-800 p-2 rounded">קביעת תור ליום {formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div><form onSubmit={handleAdd} className="space-y-3"><Input label="שם פרטי" value={first} onChange={e=>setFirst(e.target.value)} required /><Input label="שם משפחה" value={last} onChange={e=>setLast(e.target.value)} /><Input label="טלפון נייד" type="tel" value={cell} onChange={e=>setCell(e.target.value)} required /><Input label="כמות שחקנים" type="number" min="2" value={parts} onChange={e=>setParts(e.target.value)} required /><div className="flex gap-2 pt-2"><Button type="button" variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving ? 'שומר...' : 'הזמן תור'}</Button></div></form></div></div>);
+            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}><h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">הזמנת תור חדש</h3><div className="text-sm opacity-80 mb-4 bg-gray-800 p-2 rounded">קביעת תור ליום {formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div><form onSubmit={handleAdd} className="space-y-3"><div className="grid grid-cols-2 gap-4"><Input label="שם פרטי" value={first} onChange={e=>setFirst(e.target.value)} required /><Input label="שם משפחה" value={last} onChange={e=>setLast(e.target.value)} /></div><Input label="טלפון נייד" type="tel" value={cell} onChange={e=>setCell(e.target.value)} required /><Input label="אימייל (אופציונלי)" type="email" value={email} onChange={e=>setEmail(e.target.value)} /><Input label="כמות שחקנים" type="number" min="2" value={parts} onChange={e=>setParts(e.target.value)} required /><div className="flex flex-col gap-1 border-t border-gray-700 pt-3 mt-3"><label className="text-sm opacity-70">שיוך מפעיל (אופציונלי)</label><select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-white" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)}><option value="">-- בחר מי יפעיל --</option><option value="admin">מנהל מערכת</option>{(employees||[]).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div><div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving ? 'שומר...' : 'הזמן תור'}</Button></div></form></div></div>);
         };
 
         const AssignModal = ({ slotData, onClose, employees, settings }) => {
@@ -124,7 +131,6 @@
             };
             return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}><div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3"><h3 className="text-xl font-bold">עריכת הוצאה</h3><button onClick={onClose} className="text-gray-400 hover:text-white"><XIcon size={20}/></button></div><form onSubmit={handleSave} className="space-y-4"><Input label="שם ההוצאה" value={expName} onChange={e=>setExpName(e.target.value)} required /><div className="flex flex-col gap-1"><label className="text-sm opacity-70">קטגוריה</label><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={expCategory} onChange={e=>setExpCategory(e.target.value)}>{dynamicCats.map(c=><option key={c} value={c}>{c}</option>)}<option value="אחר">אחר...</option></select></div>{expCategory==='אחר' && <Input label="קטגוריה חדשה" value={customCat} onChange={e=>setCustomCat(e.target.value)} required />}<Input label="מספר חשבונית/קבלה" value={expInv} onChange={e=>setExpInvoice(e.target.value)} /><Input label="סכום כולל (₪)" type="number" step="any" min="0" value={expAmount} onChange={e=>setExpAmount(e.target.value)} required /><div className="grid grid-cols-2 gap-4"><Input label="מחודש" type="month" value={expFrom} onChange={e=>setExpFrom(e.target.value)} required /><Input label="עד חודש" type="month" value={expTo} onChange={e=>setExpTo(e.target.value)} required /></div><Button type="submit" disabled={saving} className="w-full mt-4">{saving?'מעדכן...':'שמור שינויים'}</Button></form></div></div>);
         };
-
         const GroupReportForm = ({ employeeId, settings, onSave, isAdmin, employees }) => {
             const [date, setDate] = useState(new Date().toISOString().slice(0, 10)); const [time, setTime] = useState('10:00'); const [room, setRoom] = useState(''); const [customerName, setCustomerName] = useState(''); const [totalPlayers, setTotalPlayers] = useState(2); const [groupType, setGroupType] = useState(''); const [source, setSource] = useState(''); const [kids, setKids] = useState(0); const [eligible, setEligible] = useState(0); const [hasMegaLaan, setHasMegaLaan] = useState(false); const [megaLaanPlayers, setMegaLaanPlayers] = useState(0); const [megaLaanCode, setMegaLaanCode] = useState(''); const [isWeekendMegaLaan, setIsWeekendMegaLaan] = useState(false); const [payments, setPayments] = useState({ cash: '', credit: '', bit: '', transfer: '' }); const [invoiceNumber, setInvoiceNumber] = useState(''); const [saving, setSaving] = useState(false); const [attemptedSubmit, setAttemptedSubmit] = useState(false); const [reportEmpId, setReportEmpId] = useState(employeeId); const [fetchedCustomers, setFetchedCustomers] = useState([]); const [isManualCustomer, setIsManualCustomer] = useState(true); const [loadingCustomers, setLoadingCustomers] = useState(false); const [tor4youError, setTor4youError] = useState(null); 
             const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
@@ -138,7 +144,6 @@
             const weekendMega = (hasMegaLaan && isWeekendMegaLaan) ? Number(megaLaanPlayers) * 10 : 0;
             const discountK = settings.pricing?.discountKids || 15; const discountE = settings.pricing?.discountEligible || 10;
             const totalDiscountAmount = hasMegaLaan ? 0 : (Number(kids) * basePrice * (discountK / 100) + Number(eligible) * basePrice * (discountE / 100));
-            // עיגול כלפי מעלה לסכום סופי
             const finalPriceToPay = Math.ceil(hasMegaLaan ? ((Number(totalPlayers) - Number(megaLaanPlayers) > 0 ? (Number(totalPlayers) - Number(megaLaanPlayers)) * basePrice : 0) + weekendMega) : (totalOriginalPrice - totalDiscountAmount));
             const totalEnteredPayment = Object.values(payments).reduce((acc, val) => acc + (Number(val) || 0), 0); const paymentBalance = finalPriceToPay - totalEnteredPayment;
 
@@ -151,7 +156,6 @@
                 try {
                     await timeoutPromise(addDoc(getCollectionRef('groups'), { date, time, room, customerName: actualCustName, totalPlayers: Number(totalPlayers), groupType, source, kids: hasMegaLaan?0:Number(kids), eligible: hasMegaLaan?0:Number(eligible), hasMegaLaan, megaLaanPlayers: Number(megaLaanPlayers), megaLaanCode, isWeekendMegaLaan, totalOriginalPrice, totalDiscountAmount, finalPriceToPay, expectedMegaLaanRevenue: expectedMega, payments: { cash: Number(payments.cash)||0, credit: Number(payments.credit)||0, bit: Number(payments.bit)||0, transfer: Number(payments.transfer)||0 }, employeeId: reportEmpId, invoiceNumber: isAdmin ? invoiceNumber : '', createdAt: new Date().toISOString() }), 4000);
                     let wageAtTime = 0; if(reportEmpId !== 'admin') { const emp = (employees||[]).find(e=>e.id === reportEmpId); if(emp) wageAtTime = emp.wagePerGame || 0; }
-                    // אישור אוטומטי אם מנהל
                     await timeoutPromise(addDoc(getCollectionRef('shifts'), { employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, status: isAdmin?'approved':'pending', approved: isAdmin, wageAtTime, isAutoGroup: true }), 4000);
                     alert('קבוצה ומשמרת נשמרו בהצלחה!'); onSave();
                 } catch(err) { alert(err.message === 'Timeout' ? 'נשמר בענן (איטי)' : err.message); onSave(); } finally { setSaving(false); }
@@ -173,22 +177,19 @@
             );
         };
 
-        // --- Employee Panels ---
         const EmployeeUpcoming = ({ employee, assignments, settings }) => {
             const todayStr = new Date().toISOString().slice(0, 10);
             const myAssignments = (assignments||[]).filter(a => a.employeeId === employee.id && (a.date||'') >= todayStr).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
             const roomName = (settings?.roomsList || 'סודו של הודיני').split(',')[0].trim();
-            const handleWA = (phone) => {
+            const handleWA = (phone, time) => {
                 if(!phone) return alert('אין טלפון ללקוח זה');
                 let cleanPhone = phone.replace(/\D/g, ''); if (cleanPhone.startsWith('0')) cleanPhone = '972' + cleanPhone.substring(1);
                 const empName = employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name;
-                const text = `שלום אני ${empName} המפעילה שלך בחדר בריחה ${roomName}, אם אתם לא מוצאים את המקום או צריכים עזרה אני זמינה בשמחה :)`;
+                const text = `שלום אני ${empName} המפעילה שלך בחדר בריחה ${roomName}, לתור שהוזמן לשעה ${time}. אם אתם לא מוצאים את המקום או צריכים עזרה אני זמינה בשמחה :)`;
                 window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
             };
-            return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="success" onClick={()=>handleWA(a.customerPhone)} className="rounded-full w-12 h-12 p-0"><MessageCircle size={24}/></Button></div>))}</div></Card>);
+            return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="success" onClick={()=>handleWA(a.customerPhone, a.time)} className="rounded-full w-12 h-12 p-0"><MessageCircle size={24}/></Button></div>))}</div></Card>);
         };
-// --- סוף חלק 1 ---
-// --- התחלת חלק 2 ---
         const EmployeeHistory = ({ employee, groups, shifts }) => {
             const month = new Date().toISOString().slice(0, 7);
             const myGroups = (groups||[]).filter(g => g.employeeId === employee.id && (g.date||'').startsWith(month)).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
@@ -226,10 +227,11 @@
             const [tab, setTab] = useState('upcoming');
             const myPendingTasks = (data.tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
             const issuesCount = (data.issues||[]).filter(i => i.status === 'pending').length; 
+            const myAssignments = (data.assignments||[]).filter(a => a.employeeId === employee.id && (a.date||'') >= new Date().toISOString().slice(0, 10));
             return (
                 <div className="space-y-6">
                     <div className="flex card-bg p-1 rounded-lg w-fit overflow-x-auto max-w-full">
-                        {[{id:'upcoming', l:'תורים עתידיים'}, {id:'report', l:'דיווח והיסטוריה'}, {id:'constraints', l:'אילוצים'}, {id:'issues', l:'תקלות', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל'}].map(t => (
+                        {[{id:'upcoming', l:'תורים עתידיים', c:myAssignments.length, color:'bg-blue-500'}, {id:'report', l:'דיווח והיסטוריה'}, {id:'constraints', l:'אילוצים'}, {id:'issues', l:'תקלות', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל'}].map(t => (
                             <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{t.l}{t.c > 0 && <span className={`${t.color} text-white text-xs px-1.5 py-0.5 rounded-full font-bold`}>{t.c}</span>}</button>
                         ))}
                     </div>
@@ -243,7 +245,7 @@
             );
         };
 
-        // --- Admin Panels ---
+        // --- Admin Dashboards ---
         const AdminConstraints = ({ employees, constraints, settings, assignments }) => {
             const [offset, setOffset] = useState(0); const [isBlocking, setIsBlocking] = useState(false); const [tor4youSlotsMap, setTor4youSlotsMap] = useState({}); const [loadingSlots, setLoadingSlots] = useState(false); const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); 
             const todayStr = new Date().toISOString().slice(0, 10); const currentMonthStr = todayStr.slice(0, 7);
@@ -252,7 +254,16 @@
             const historyCons = useMemo(() => (constraints||[]).filter(c => (c.type==='range'?c.endDate:c.date||'') < todayStr && c.status !== 'pending' && (c.type==='range'?c.endDate:c.date||'').startsWith(currentMonthStr)).sort((a,b)=>((b.type==='range'?b.startDate:b.date)||'').localeCompare((a.type==='range'?a.startDate:a.date)||'')), [constraints]);
             const days = useMemo(() => Array.from({length:7}, (_,i) => { const d = new Date(); d.setDate(d.getDate() + (offset*7) + i); return d; }), [offset]);
             
-            const dynamicHours = useMemo(() => { const times = new Set(); Object.values(tor4youSlotsMap).forEach(arr => arr.forEach(s => times.add(s.time))); if (times.size === 0) return ["10:00", "11:30", "13:00", "14:30", "16:00", "17:30", "19:00", "20:30", "22:00"]; return Array.from(times).sort(); }, [tor4youSlotsMap]);
+            // תצוגת חצאי שעות רציפה ביומן!
+            const dynamicHours = useMemo(() => {
+                const times = new Set();
+                Object.values(tor4youSlotsMap).forEach(arr => arr.forEach(s => {
+                    times.add(s.time);
+                    times.add(addTime(s.time, 30)); // מוסיף גם את החצי שעה הבאה לתצוגה חלקה
+                }));
+                if (times.size === 0) return ["10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00","18:30","19:00","19:30","20:00","20:30","21:00","21:30","22:00"];
+                return Array.from(times).sort();
+            }, [tor4youSlotsMap]);
             
             const fetchWeekSlots = async () => {
                 setLoadingSlots(true);
@@ -263,36 +274,44 @@
 
             const getSlotInfo = (d, hStr, customConstraints = constraints) => {
                 const dStr = d.toISOString().slice(0,10); 
+                const daySlots = tor4youSlotsMap[dStr] || []; 
+                const slot = daySlots.find(s => s.time === hStr);
                 
-                // סינון ימי ושעות פעילות למניעת תורי רפאים!
+                // סינון שעות פעילות של העסק כדי למנוע תורי רפאים מחוץ לשעות
                 const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                 const dayName = daysOfWeek[d.getDay()];
-                const biz = settings.openingHours?.[dayName] || { start: '00:00', end: '23:59' };
-                if (!biz) return { status: -1 }; 
-                const [openH, openM] = biz.start.split(':').map(Number);
-                const [closeH, closeM] = biz.end.split(':').map(Number);
-                const [curH, curM] = hStr.split(':').map(Number);
-                const openMin = openH * 60 + openM;
-                let closeMin = closeH * 60 + closeM;
-                if (closeMin <= openMin) closeMin += 24 * 60; // לילה
+                const biz = (settings.openingHours||{})[dayName];
+                
+                const [curH, curM] = hStr.split(':').map(Number); 
                 let curMin = curH * 60 + curM;
-                if (curH < openH && closeMin > 24*60) curMin += 24 * 60; 
-                if (curMin < openMin || curMin >= closeMin) return { status: -1 };
 
-                const daySlots = tor4youSlotsMap[dStr] || []; const slot = daySlots.find(s => s.time === hStr);
+                if (biz) {
+                    const [openH, openM] = biz.start.split(':').map(Number);
+                    const [closeH, closeM] = biz.end.split(':').map(Number);
+                    const openMin = openH * 60 + openM;
+                    let closeMin = closeH * 60 + closeM;
+                    if (closeMin <= openMin) closeMin += 24 * 60; 
+                    if (curH < openH && closeMin > 24*60) curMin += 24 * 60; 
+                    if (curMin < openMin || curMin >= closeMin) return { status: -1 }; // מחוץ לשעות הפעילות
+                }
+
                 if (!slot) return { status: -1 }; 
                 
-                const slotStartMin = curH * 60 + curM; const slotEndMin = slotStartMin + 90; 
+                // חישוב חפיפה של האילוץ עם התור (90 דקות משך תור)
+                const slotStartMin = curMin; 
+                const slotEndMin = slotStartMin + 90; 
                 let count = 0;
                 (employees||[]).forEach(emp => {
                     const busy = (customConstraints||[]).some(c => {
                         if (c.employeeId !== emp.id || c.status === 'rejected') return false; 
                         if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
                         const [sH, sM] = (c.startTime || '00:00').split(':').map(Number); const [eH, eM] = (c.endTime || '00:00').split(':').map(Number);
-                        return c.date === dStr && (Math.max(slotStartMin, (sH * 60 + sM)) < Math.min(slotEndMin, (eH * 60 + eM)));
+                        const cStartMin = sH * 60 + sM; const cEndMin = eH * 60 + eM;
+                        return c.date === dStr && (Math.max(slotStartMin, cStartMin) < Math.min(slotEndMin, cEndMin));
                     });
                     if (!busy) count++;
                 });
+
                 const assignId = `${dStr}_${hStr.replace(':','')}`;
                 return { status: count, isBooked: slot.isBooked, customerName: slot.customerName, customerPhone: slot.customerPhone, dateStr: dStr, time: hStr, id: slot.id, vfib: slot.vfib, staff: slot.staff, service: slot.service, assignment: (assignments||[]).find(a => a.id === assignId) };
             };
@@ -371,7 +390,7 @@
                                             return (<div key={i} onClick={()=>setAssignSlot(info)} className="p-1 rounded bg-indigo-900/60 ring-1 ring-indigo-500 text-white font-bold flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-800 transition-colors h-full"><span className="text-[10px] truncate w-full text-center leading-tight">{info.customerName || 'לקוח'}</span><span className="text-[9px] opacity-70 truncate w-full text-center mb-1 leading-tight">{info.customerPhone || 'תפוס'}</span><span className={`text-[9px] px-1 rounded ${info.assignment ? 'bg-green-600' : 'bg-red-500'}`}>{assignName}</span></div>);
                                         }
                                         let bg = 'bg-green-900/60'; if (info.status === 0) bg = 'bg-red-900/60 ring-1 ring-red-500'; else if (info.status === 1) bg = 'bg-yellow-900/60';
-                                        return (<div key={i} onClick={()=>setAddApptSlot(info)} className={`p-1 rounded ${bg} text-white font-bold flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity h-full`}><span className="text-lg">{info.status}</span><span className="text-[9px] opacity-70">פנויים</span><span className="text-[9px] mt-1 bg-white/20 px-1 rounded hover:bg-white/40">הזמן +</span></div>);
+                                        return (<div key={i} onClick={()=>setAddApptSlot({ ...info, staff: info.staff, service: info.service })} className={`p-1 rounded ${bg} text-white font-bold flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity h-full`}><span className="text-lg">{info.status}</span><span className="text-[9px] opacity-70">פנויים</span><span className="text-[9px] mt-1 bg-white/20 px-1 rounded hover:bg-white/40">הזמן +</span></div>);
                                     })}
                                 </div>
                             )})}
@@ -379,7 +398,7 @@
                     </Card>
                     <div className="mt-8 border-t border-gray-800 pt-8"><h3 className="text-xl font-bold flex items-center gap-2 opacity-70 mb-4"><History size={20}/> היסטוריית אילוצים (חודש נוכחי)</h3><div className="card-bg rounded-xl p-6 opacity-80">{renderConstraintsTable(historyCons, 'אין היסטוריית אילוצים לחודש הנוכחי')}</div></div>
                     {assignSlot && <AssignModal slotData={assignSlot} onClose={()=>setAssignSlot(null)} employees={employees} settings={settings} />}
-                    {addApptSlot && <AddAppointmentModal slotData={addApptSlot} onClose={()=>setAddApptSlot(null)} onRefresh={fetchWeekSlots} />}
+                    {addApptSlot && <AddAppointmentModal slotData={addApptSlot} onClose={()=>setAddApptSlot(null)} onRefresh={fetchWeekSlots} employees={employees} />}
                 </div>
             );
         };
@@ -567,106 +586,6 @@
                 </div>
             );
         };
-
-        function GRoomApp() {
-            const [user, setUser] = useState(null);
-            const [currentUser, setCurrentUser] = useState(null);
-            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [], issues: [], assignments: [] });
-            const [settings, setSettings] = useState(INITIAL_SETTINGS);
-            const [loading, setLoading] = useState(true);
-            const [login, setLogin] = useState({ code: '', empId: '' });
-            const [dbConn, setDbConn] = useState(false);
-
-            useEffect(() => {
-                const init = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
-                init();
-                return onAuthStateChanged(auth, setUser);
-            }, []);
-
-            useEffect(() => {
-                if (!user) return;
-                setLoading(true);
-                const unsub = [
-                    onSnapshot(getCollectionRef('employees'), s => { setData(p => ({...p, employees: s.docs.map(d => ({id: d.id, ...d.data()}))})); setDbConn(true); }, e => setDbConn(false)),
-                    onSnapshot(getCollectionRef('shifts'), s => setData(p => ({...p, shifts: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('constraints'), s => setData(p => ({...p, constraints: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('requests'), s => setData(p => ({...p, requests: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('tasks'), s => setData(p => ({...p, tasks: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('expenses'), s => setData(p => ({...p, expenses: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('issues'), s => setData(p => ({...p, issues: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('assignments'), s => setData(p => ({...p, assignments: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
-                    onSnapshot(getCollectionRef('app_settings'), s => {
-                        if (!s.empty) { const d = s.docs.find(doc => doc.id === 'global') || s.docs[0]; if (d) setSettings(prev => ({...prev, ...d.data()})); }
-                        setLoading(false);
-                    })
-                ];
-                return () => unsub.forEach(u => u());
-            }, [user]);
-
-            useEffect(() => {
-                const r = document.documentElement.style;
-                r.setProperty('--app-bg', settings.primaryColor || '#030712');
-                r.setProperty('--app-text', settings.secondaryColor || '#ffffff');
-                const isLight = settings.primaryColor === '#ffffff' || settings.primaryColor === '#f3f4f6';
-                r.setProperty('--app-card-bg', isLight ? '#e5e7eb' : 'rgba(255, 255, 255, 0.05)');
-                r.setProperty('--app-border', isLight ? '#d1d5db' : 'rgba(255, 255, 255, 0.1)');
-            }, [settings]);
-
-            const doLogin = () => {
-                if ((login.empId === 'admin' && login.code === settings.adminCode) || (login.empId === 'admin' && (data.employees||[]).length === 0 && login.code === 'admin123')) {
-                    setCurrentUser({ role: 'admin', name: 'מנהל המערכת', id: 'admin' });
-                } else {
-                    const emp = (data.employees||[]).find(e => e.id === login.empId);
-                    if (emp && emp.code === login.code) setCurrentUser({ role: 'employee', data: emp, id: emp.id, name: emp.name });
-                    else alert("פרטי התחברות שגויים");
-                }
-            };
-
-            if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-indigo-500"><Loader className="animate-spin w-10 h-10" /></div>;
-
-            if (!currentUser) return (
-                <div className="min-h-screen flex items-center justify-center p-4">
-                    <div className="max-w-md w-full card-bg p-8 rounded-2xl text-center relative shadow-2xl">
-                        <div className={`absolute top-4 right-4 w-3 h-3 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></div>
-                        <div className="mb-8">
-                            {settings.logo ? <img src={settings.logo} className="h-24 mx-auto mb-4 object-contain"/> : <div className="h-24 w-24 bg-indigo-900/50 rounded-full mx-auto flex items-center justify-center mb-4"><Lock size={40} className="text-indigo-400"/></div>}
-                            <h1 className="text-3xl font-bold text-dynamic">{settings.businessName}</h1>
-                            <p className="opacity-60 text-sm mt-2">מערכת ניהול ERP</p>
-                        </div>
-                        <div className="space-y-4">
-                            <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500" value={login.empId} onChange={e => setLogin({...login, empId: e.target.value})}>
-                                <option value="">-- בחר משתמש --</option>
-                                <option value="admin">🔒 מנהל מערכת</option>
-                                {(data.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                            </select>
-                            <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
-                            <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
-                        </div>
-                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 8.4 - עיגול מחירים, וואטסאפ והזמנה חכמה</div>
-                    </div>
-                </div>
-            );
-
-            return (
-                <div className="min-h-screen font-sans flex flex-col">
-                    <header className="card-bg border-b border-dynamic sticky top-0 z-50 h-16 flex items-center justify-between px-6 shadow-sm">
-                        <div className="flex items-center gap-3">
-                            {settings.logo && <img src={settings.logo} className="h-8 w-8 rounded object-cover"/>}
-                            <span className="font-bold text-xl text-dynamic hidden sm:block">{settings.businessName}</span>
-                            <span className="text-xs bg-indigo-900/50 text-indigo-200 px-3 py-1 rounded-full border border-indigo-500/30 flex items-center gap-2">
-                                {currentUser.role === 'admin' ? 'מנהל מערכת' : `שלום, ${currentUser.name}`}
-                                <div className={`w-2 h-2 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                            </span>
-                        </div>
-                        <Button variant="ghost" onClick={() => {setCurrentUser(null); setLogin({code:'', empId:''});}} className="text-red-400 hover:bg-red-900/20"><LogOut size={18} /> <span className="hidden sm:inline">יציאה</span></Button>
-                    </header>
-                    <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
-                        {currentUser.role === 'admin' ? <AdminDashboard data={data} settings={settings} /> : <EmployeeDashboard employee={currentUser} data={data} settings={settings} />}
-                    </main>
-                </div>
-            );
-        }
 
         const root = createRoot(document.getElementById('root'));
         root.render(<GRoomApp />);
