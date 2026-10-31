@@ -156,7 +156,7 @@
                 try {
                     await timeoutPromise(addDoc(getCollectionRef('groups'), { date, time, room, customerName: actualCustName, totalPlayers: Number(totalPlayers), groupType, source, kids: hasMegaLaan?0:Number(kids), eligible: hasMegaLaan?0:Number(eligible), hasMegaLaan, megaLaanPlayers: Number(megaLaanPlayers), megaLaanCode, isWeekendMegaLaan, totalOriginalPrice, totalDiscountAmount, finalPriceToPay, expectedMegaLaanRevenue: expectedMega, payments: { cash: Number(payments.cash)||0, credit: Number(payments.credit)||0, bit: Number(payments.bit)||0, transfer: Number(payments.transfer)||0 }, employeeId: reportEmpId, invoiceNumber: isAdmin ? invoiceNumber : '', createdAt: new Date().toISOString() }), 4000);
                     let wageAtTime = 0; if(reportEmpId !== 'admin') { const emp = (employees||[]).find(e=>e.id === reportEmpId); if(emp) wageAtTime = emp.wagePerGame || 0; }
-                    await timeoutPromise(addDoc(getCollectionRef('shifts'), { employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, status: isAdmin?'approved':'pending', approved: isAdmin, wageAtTime, isAutoGroup: true }), 4000);
+                    await timeoutPromise(addDoc(getCollectionRef('shifts'), { employeeId: reportEmpId, date, startTime: time, gamesCount: 1, room, status: isAdmin?'approved':'pending', approved: !!isAdmin, wageAtTime, isAutoGroup: true }), 4000);
                     alert('קבוצה ומשמרת נשמרו בהצלחה!'); onSave();
                 } catch(err) { alert(err.message === 'Timeout' ? 'נשמר בענן (איטי)' : err.message); onSave(); } finally { setSaving(false); }
             };
@@ -257,13 +257,17 @@
             // תצוגת חצאי שעות רציפה ביומן!
             const dynamicHours = useMemo(() => {
                 const times = new Set();
-                Object.values(tor4youSlotsMap).forEach(arr => arr.forEach(s => {
+                const DN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+                const tm = (t) => { const [h, m] = (t || '00:00').split(':').map(Number); return h * 60 + (m || 0); };
+                const inHours = (d, t) => { const cur = tm(t); const chk = (idx, prev) => { const b = (settings.openingHours||{})[DN[idx]]; if (!b || !b.start || !b.end) return false; const o = tm(b.start); let c = tm(b.end); if (c <= o) c += 1440; const x = cur + (prev ? 1440 : 0); return x >= o && x < c; }; return chk(d.getDay(), false) || chk((d.getDay() + 6) % 7, true); };
+                Object.entries(tor4youSlotsMap).forEach(([dStr, arr]) => { const dd = new Date(dStr + 'T12:00:00'); arr.forEach(s => {
+                    if (!inHours(dd, s.time)) return; // לא מציג שעות מחוץ לשעות הפעילות
                     times.add(s.time);
                     times.add(addTime(s.time, 30)); // מוסיף גם את החצי שעה הבאה לתצוגה חלקה
-                }));
+                }); });
                 if (times.size === 0) return ["10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00","18:30","19:00","19:30","20:00","20:30","21:00","21:30","22:00"];
-                return Array.from(times).sort();
-            }, [tor4youSlotsMap]);
+                return Array.from(times).sort((a, b) => (tm(a) + (tm(a) < 360 ? 1440 : 0)) - (tm(b) + (tm(b) < 360 ? 1440 : 0)));
+            }, [tor4youSlotsMap, settings.openingHours]);
             
             const fetchWeekSlots = async () => {
                 setLoadingSlots(true);
@@ -306,7 +310,7 @@
                         if (c.employeeId !== emp.id || c.status === 'rejected') return false; 
                         if (c.type === 'range') return dStr >= c.startDate && dStr <= c.endDate;
                         const [sH, sM] = (c.startTime || '00:00').split(':').map(Number); const [eH, eM] = (c.endTime || '00:00').split(':').map(Number);
-                        const cStartMin = sH * 60 + sM; const cEndMin = eH * 60 + eM;
+                        const cStartMin = sH * 60 + sM; let cEndMin = eH * 60 + eM; if (cEndMin <= cStartMin) cEndMin += 1440;
                         return c.date === dStr && (Math.max(slotStartMin, cStartMin) < Math.min(slotEndMin, cEndMin));
                     });
                     if (!busy) count++;
