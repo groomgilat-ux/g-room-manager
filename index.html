@@ -493,7 +493,7 @@
                     await fetchWeekSlots();
                 } catch (e) { setSyncMsg('❌ ' + e.message); } finally { setSyncing(false); }
             };
-            const delRange = async (c) => { if (!confirm('למחוק את הזמינות הזו?')) return; try { await deleteDoc(getDocRef('constraints', c.id)); setSyncMsg('הזמינות נמחקה. לחץ "סנכרון יומן" כדי לעדכן את Tor4You.'); } catch (e) { alert(e.message); } };
+            const delRange = async (c) => { if (!confirm('למחוק את הזמינות הזו? היומן ב-Tor4You יתעדכן אוטומטית.')) return; try { await deleteDoc(getDocRef('constraints', c.id)); setSyncing(true); setSyncMsg('מעדכן את Tor4You...'); const rest = (constraints || []).filter(x => x.id !== c.id); const wk = getWeekStart(new Date(c.date + 'T12:00:00')); const r = await syncCalendarWeek({ weekStart: wk, constraints: rest, employees, settings }); setSyncMsg('✅ הזמינות נמחקה. ' + describeSync(r)); await fetchWeekSlots(); } catch (e) { setSyncMsg('❌ ' + e.message); } finally { setSyncing(false); } };
 
             const blockClass = { booked: 'bg-indigo-900/80 ring-1 ring-indigo-400 cursor-pointer hover:bg-indigo-800', open: 'bg-green-800/70 ring-1 ring-green-500 cursor-pointer hover:bg-green-700/80', uncovered: 'bg-red-900/70 ring-1 ring-red-500 cursor-pointer hover:bg-red-800/80', planned: 'border border-dashed border-green-400/70 bg-green-900/10' };
             const hourLabels = Array.from({ length: rows }, (_, i) => gridStart + i * 30);
