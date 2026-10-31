@@ -587,6 +587,106 @@
             );
         };
 
+        function GRoomApp() {
+            const [user, setUser] = useState(null);
+            const [currentUser, setCurrentUser] = useState(null);
+            const [data, setData] = useState({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [], issues: [], assignments: [] });
+            const [settings, setSettings] = useState(INITIAL_SETTINGS);
+            const [loading, setLoading] = useState(true);
+            const [login, setLogin] = useState({ code: '', empId: '' });
+            const [dbConn, setDbConn] = useState(false);
+
+            useEffect(() => {
+                const init = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
+                init();
+                return onAuthStateChanged(auth, setUser);
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                setLoading(true);
+                const unsub = [
+                    onSnapshot(getCollectionRef('employees'), s => { setData(p => ({...p, employees: s.docs.map(d => ({id: d.id, ...d.data()}))})); setDbConn(true); }, e => setDbConn(false)),
+                    onSnapshot(getCollectionRef('shifts'), s => setData(p => ({...p, shifts: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('constraints'), s => setData(p => ({...p, constraints: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('requests'), s => setData(p => ({...p, requests: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('tasks'), s => setData(p => ({...p, tasks: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('expenses'), s => setData(p => ({...p, expenses: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('issues'), s => setData(p => ({...p, issues: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('assignments'), s => setData(p => ({...p, assignments: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('app_settings'), s => {
+                        if (!s.empty) { const d = s.docs.find(doc => doc.id === 'global') || s.docs[0]; if (d) setSettings(prev => ({...prev, ...d.data()})); }
+                        setLoading(false);
+                    })
+                ];
+                return () => unsub.forEach(u => u());
+            }, [user]);
+
+            useEffect(() => {
+                const r = document.documentElement.style;
+                r.setProperty('--app-bg', settings.primaryColor || '#030712');
+                r.setProperty('--app-text', settings.secondaryColor || '#ffffff');
+                const isLight = settings.primaryColor === '#ffffff' || settings.primaryColor === '#f3f4f6';
+                r.setProperty('--app-card-bg', isLight ? '#e5e7eb' : 'rgba(255, 255, 255, 0.05)');
+                r.setProperty('--app-border', isLight ? '#d1d5db' : 'rgba(255, 255, 255, 0.1)');
+            }, [settings]);
+
+            const doLogin = () => {
+                if ((login.empId === 'admin' && login.code === settings.adminCode) || (login.empId === 'admin' && (data.employees||[]).length === 0 && login.code === 'admin123')) {
+                    setCurrentUser({ role: 'admin', name: 'מנהל המערכת', id: 'admin' });
+                } else {
+                    const emp = (data.employees||[]).find(e => e.id === login.empId);
+                    if (emp && emp.code === login.code) setCurrentUser({ role: 'employee', data: emp, id: emp.id, name: emp.name });
+                    else alert("פרטי התחברות שגויים");
+                }
+            };
+
+            if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-indigo-500"><Loader className="animate-spin w-10 h-10" /></div>;
+
+            if (!currentUser) return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="max-w-md w-full card-bg p-8 rounded-2xl text-center relative shadow-2xl">
+                        <div className={`absolute top-4 right-4 w-3 h-3 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></div>
+                        <div className="mb-8">
+                            {settings.logo ? <img src={settings.logo} className="h-24 mx-auto mb-4 object-contain"/> : <div className="h-24 w-24 bg-indigo-900/50 rounded-full mx-auto flex items-center justify-center mb-4"><Lock size={40} className="text-indigo-400"/></div>}
+                            <h1 className="text-3xl font-bold text-dynamic">{settings.businessName}</h1>
+                            <p className="opacity-60 text-sm mt-2">מערכת ניהול ERP</p>
+                        </div>
+                        <div className="space-y-4">
+                            <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500" value={login.empId} onChange={e => setLogin({...login, empId: e.target.value})}>
+                                <option value="">-- בחר משתמש --</option>
+                                <option value="admin">🔒 מנהל מערכת</option>
+                                {(data.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                            </select>
+                            <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
+                            <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
+                        </div>
+                        <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 8.4 - עיגול מחירים, וואטסאפ והזמנה חכמה</div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen font-sans flex flex-col">
+                    <header className="card-bg border-b border-dynamic sticky top-0 z-50 h-16 flex items-center justify-between px-6 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            {settings.logo && <img src={settings.logo} className="h-8 w-8 rounded object-cover"/>}
+                            <span className="font-bold text-xl text-dynamic hidden sm:block">{settings.businessName}</span>
+                            <span className="text-xs bg-indigo-900/50 text-indigo-200 px-3 py-1 rounded-full border border-indigo-500/30 flex items-center gap-2">
+                                {currentUser.role === 'admin' ? 'מנהל מערכת' : `שלום, ${currentUser.name}`}
+                                <div className={`w-2 h-2 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                            </span>
+                        </div>
+                        <Button variant="ghost" onClick={() => {setCurrentUser(null); setLogin({code:'', empId:''});}} className="text-red-400 hover:bg-red-900/20"><LogOut size={18} /> <span className="hidden sm:inline">יציאה</span></Button>
+                    </header>
+                    <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
+                        {currentUser.role === 'admin' ? <AdminDashboard data={data} settings={settings} /> : <EmployeeDashboard employee={currentUser} data={data} settings={settings} />}
+                    </main>
+                </div>
+            );
+        }
+
         const root = createRoot(document.getElementById('root'));
         root.render(<GRoomApp />);
     </script>
