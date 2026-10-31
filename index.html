@@ -86,7 +86,7 @@
                 try {
                     const res = await fetch(TOR4YOU_ADD_APPT_URL, { 
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ slotid: slotData.id, vfib: slotData.vfib, staff: slotData.staff, service: slotData.service, first, last, cell, email, participants: parts }) 
+                        body: JSON.stringify({ slotid: slotData.id, vfib: slotData.vfib, staff: (slotData.staff && String(slotData.staff) !== '0') ? slotData.staff : undefined, service: (slotData.service && String(slotData.service) !== '0') ? slotData.service : undefined, first, last, cell, email, participants: Number(parts) }) 
                     });
                     const data = await res.json();
                     if(data.success) { 
