@@ -69,11 +69,16 @@
         const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
         const shiftMonth = (m, delta) => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 1 + delta, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
         const normalizePhone = (phone) => { let p = String(phone || '').replace(/\D/g, ''); if (p.startsWith('9720')) p = '972' + p.slice(4); else if (p.startsWith('0')) p = '972' + p.slice(1); return p; };
-        const buildWAUrl = (phone, empName, room, time) => `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(`שלום אני ${empName}, המפעיל/ה שלך בחדר בריחה ${room}, לתור שהוזמן לשעה ${time}. אם אתם לא מוצאים את המקום או צריכים עזרה אני זמינה בשמחה :)`)}`;
+        const buildWAUrl = (phone, empName, room, time, gender) => {
+            const role = gender === 'male' ? 'המפעיל' : (gender === 'female' ? 'המפעילה' : 'המפעיל/ה');
+            const avail = gender === 'male' ? 'זמין' : (gender === 'female' ? 'זמינה' : 'זמין/ה');
+            return `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(`שלום אני ${empName}, ${role} שלך בחדר בריחה ${room}, לתור שהוזמן לשעה ${time}. אם אתם לא מוצאים את המקום או צריכים עזרה אני ${avail} בשמחה :)`)}`;
+        };
         const timeoutPromise = (p, ms=5000) => Promise.race([p, new Promise((_, r)=>setTimeout(()=>r(new Error("Timeout")), ms))]);
 
         // ====== Calendar / availability engine ======
         const TOR4YOU_ADD_SLOTS_URL = `${API_URL}/addTor4YouSlots`;
+        const TOR4YOU_DELETE_APPT_URL = `${API_URL}/deleteTor4YouAppointment`;
         const DAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const DAY_NAMES_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
         const SLOT_MIN = 60;   // אורך התור
@@ -226,7 +231,7 @@
             </div></div>);
         };
 
-        const AssignModal = ({ slotData, onClose, employees, settings }) => {
+        const AssignModal = ({ slotData, onClose, employees, settings, onRefresh }) => {
             const [selectedEmp, setSelectedEmp] = useState(''); const [saving, setSaving] = useState(false);
             const roomName = (settings.roomsList || 'סודו של הודיני').split(',')[0].trim();
             const handleAdminWA = () => {
@@ -234,7 +239,19 @@
                 const ans = prompt('מי מנהל המערכת כרגע?', saved);
                 if (!ans || !ans.trim()) return;
                 try { localStorage.setItem('groom_admin_name', ans.trim()); } catch (e) {}
-                window.open(buildWAUrl(slotData.customerPhone, ans.trim(), roomName, slotData.time), '_blank');
+                window.open(buildWAUrl(slotData.customerPhone, ans.trim(), roomName, slotData.time, 'male'), '_blank'); // מנהל מערכת - לשון זכר
+            };
+            const handleCancelAppt = async () => {
+                if (!confirm(`לבטל את התור של ${slotData.customerName || 'הלקוח'} ב-${formatDateIL(slotData.dateStr)} בשעה ${slotData.time}?\nהפעולה מוחקת את ההזמנה ב-Tor4You ואי אפשר לשחזר אותה.`)) return;
+                const notify = confirm('לשלוח ללקוח הודעת ביטול מ-Tor4You?\nאישור = לשלוח הודעה, ביטול = לא לשלוח');
+                setSaving(true);
+                try {
+                    const r = await fetch(TOR4YOU_DELETE_APPT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: slotData.dateStr, time: slotData.time, sendnotice: notify }) });
+                    let d = {}; try { d = await r.json(); } catch (x) {}
+                    if (!d.success) { alert('ביטול התור נכשל: ' + (d.error || ('שגיאה ' + r.status + ' (האם פונקציות השרת עודכנו?)'))); return; }
+                    try { await deleteDoc(getDocRef('assignments', `${slotData.dateStr}_${slotData.time.replace(':', '')}`)); } catch (x) {}
+                    alert('התור בוטל.'); if (onRefresh) onRefresh(); onClose();
+                } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setSaving(false); }
             };
             const handleAssign = async () => {
                 if(!selectedEmp) return alert('בחר עובד לשיוך'); setSaving(true);
@@ -244,7 +261,7 @@
                     alert('התור שויך בהצלחה!'); onClose();
                 } catch(e) { alert(e.message); setSaving(false); }
             };
-            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}><h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">שיוך תור למפעיל</h3><div className="text-sm opacity-80 mb-4 space-y-1"><div><strong>זמן:</strong> {formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div><div><strong>לקוח:</strong> {slotData.customerName}</div><div><strong>טלפון:</strong> {slotData.customerPhone || 'אין'}</div>{slotData.customerPhone && <Button variant="success" onClick={handleAdminWA} className="w-full mt-2"><MessageCircle size={18}/> שלח וואטסאפ ללקוח</Button>}</div><select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-4" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)}><option value="">-- בחר מי יפעיל --</option><option value="admin">מנהל מערכת</option>{(employees||[]).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select><div className="flex gap-2"><Button variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button onClick={handleAssign} disabled={saving} className="flex-1">{saving?'שומר...':'שייך מפעיל'}</Button></div></div></div>);
+            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}><h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">שיוך תור למפעיל</h3><div className="text-sm opacity-80 mb-4 space-y-1"><div><strong>זמן:</strong> {formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div><div><strong>לקוח:</strong> {slotData.customerName}</div><div><strong>טלפון:</strong> {slotData.customerPhone || 'אין'}</div>{slotData.customerPhone && <Button variant="success" onClick={handleAdminWA} className="w-full mt-2"><MessageCircle size={18}/> שלח וואטסאפ ללקוח</Button>}</div><select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-4" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)}><option value="">-- בחר מי יפעיל --</option><option value="admin">מנהל מערכת</option>{(employees||[]).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select><div className="flex gap-2"><Button variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button onClick={handleAssign} disabled={saving} className="flex-1">{saving?'שומר...':'שייך מפעיל'}</Button></div><Button variant="danger" onClick={handleCancelAppt} disabled={saving} className="w-full mt-3"><Trash2 size={16}/> בטל תור (מחיקה מ-Tor4You)</Button></div></div>);
         };
 
         const EditGroupModal = ({ group, onClose, employees, settings }) => {
@@ -328,7 +345,7 @@
             const handleWA = (phone, time, room) => {
                 if(!phone) return alert('אין טלפון ללקוח זה');
                 const empName = employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name;
-                window.open(buildWAUrl(phone, empName, room || roomName, time), '_blank');
+                window.open(buildWAUrl(phone, empName, room || roomName, time, employee.role === 'admin' ? 'male' : employee.gender), '_blank');
             };
             return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="success" onClick={()=>handleWA(a.customerPhone, a.time, a.room)} className="rounded-full w-12 h-12 p-0"><MessageCircle size={24}/></Button></div>))}</div></Card>);
         };
@@ -551,7 +568,7 @@
                             {(employees || []).length === 0 && <tr><td colSpan="8" className="text-center py-4 opacity-60">אין עובדים</td></tr>}
                         </tbody></table></div>
                     </Card>
-                    {assignSlot && <AssignModal slotData={assignSlot} onClose={() => setAssignSlot(null)} employees={employees} settings={settings} />}
+                    {assignSlot && <AssignModal slotData={assignSlot} onClose={() => setAssignSlot(null)} employees={employees} settings={settings} onRefresh={fetchWeekSlots} />}
                     {addApptSlot && <AddAppointmentModal slotData={addApptSlot} onClose={() => setAddApptSlot(null)} onRefresh={fetchWeekSlots} employees={employees} settings={settings} constraints={availCons} slotsMap={slotsMap} />}
                     {showNew && <AddAppointmentModal isNew slotData={{ dateStr: todayStr, time: '12:00' }} onClose={() => setShowNew(false)} onRefresh={fetchWeekSlots} employees={employees} settings={settings} constraints={availCons} slotsMap={slotsMap} />}
                 </div>
@@ -675,8 +692,8 @@
 
         const AdminEmployees = ({ employees }) => {
             const [open, setOpen] = useState(false); const [edit, setEdit] = useState(null); const [saving, setSaving] = useState(false);
-            const save = async (e) => { e.preventDefault(); setSaving(true); const fd = new FormData(e.target); const d = { name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), code: fd.get('code'), address: fd.get('address'), birthday: fd.get('birthday'), wagePerGame: Number(fd.get('wagePerGame')), form101: fd.get('form101') === 'on', skills: fd.get('skills').split(',').map(s=>s.trim()) }; try { if(edit) await updateDoc(getDocRef('employees', edit.id), d); else await addDoc(getCollectionRef('employees'), d); setOpen(false); } catch(e) { alert(e.message); } finally { setSaving(false); } };
-            return (<div className="space-y-6"><div className="flex justify-between"><h2 className="text-2xl font-bold">ניהול עובדים</h2><Button onClick={()=>{setEdit(null); setOpen(true);}}><Plus size={18}/> הוסף עובד</Button></div><div className="grid md:grid-cols-3 gap-4">{(employees||[]).map(e => (<Card key={e.id} className="relative group hover:border-indigo-500"><div className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 flex gap-2"><button onClick={()=>{setEdit(e); setOpen(true);}} className="bg-gray-900 p-1 rounded text-indigo-400">ערוך</button><button onClick={()=>confirm("למחוק?") && deleteDoc(getDocRef('employees', e.id))} className="bg-gray-900 p-1 rounded text-red-400"><Trash2 size={16}/></button></div><h3 className="font-bold text-lg">{e.name}</h3><p className="text-sm opacity-70">{e.phone}</p><div className="mt-2 text-sm opacity-60"><div>קוד: {e.code}</div><div>תעריף: ₪{e.wagePerGame}</div></div></Card>))}</div>{open && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold mb-4">{edit ? 'עריכה' : 'חדש'}</h3><form onSubmit={save} className="space-y-4"><div className="grid grid-cols-2 gap-4"><Input label="שם" name="name" required defaultValue={edit?.name}/><Input label="טלפון" name="phone" required defaultValue={edit?.phone}/><Input label="מייל" name="email" type="email" required defaultValue={edit?.email}/><Input label="קוד" name="code" required defaultValue={edit?.code}/><Input label="כתובת" name="address" className="col-span-2" defaultValue={edit?.address}/><Input label="יום הולדת" name="birthday" type="date" defaultValue={edit?.birthday}/><Input label="שכר למשחק" name="wagePerGame" type="number" required defaultValue={edit?.wagePerGame}/><Input label="הסמכות (מופרד בפסיק)" name="skills" className="col-span-2" defaultValue={edit?.skills?.join(', ')}/></div><div className="flex gap-2"><input type="checkbox" name="form101" defaultChecked={edit?.form101}/> <label>טופס 101</label></div><div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'שמור בענן'}</Button></div></form></div></div>}</div>);
+            const save = async (e) => { e.preventDefault(); setSaving(true); const fd = new FormData(e.target); const d = { name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), code: fd.get('code'), address: fd.get('address'), birthday: fd.get('birthday'), wagePerGame: Number(fd.get('wagePerGame')), form101: fd.get('form101') === 'on', skills: fd.get('skills').split(',').map(s=>s.trim()), gender: fd.get('gender') || '' }; try { if(edit) await updateDoc(getDocRef('employees', edit.id), d); else await addDoc(getCollectionRef('employees'), d); setOpen(false); } catch(e) { alert(e.message); } finally { setSaving(false); } };
+            return (<div className="space-y-6"><div className="flex justify-between"><h2 className="text-2xl font-bold">ניהול עובדים</h2><Button onClick={()=>{setEdit(null); setOpen(true);}}><Plus size={18}/> הוסף עובד</Button></div><div className="grid md:grid-cols-3 gap-4">{(employees||[]).map(e => (<Card key={e.id} className="relative group hover:border-indigo-500"><div className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 flex gap-2"><button onClick={()=>{setEdit(e); setOpen(true);}} className="bg-gray-900 p-1 rounded text-indigo-400">ערוך</button><button onClick={()=>confirm("למחוק?") && deleteDoc(getDocRef('employees', e.id))} className="bg-gray-900 p-1 rounded text-red-400"><Trash2 size={16}/></button></div><h3 className="font-bold text-lg">{e.name}</h3><p className="text-sm opacity-70">{e.phone}</p><div className="mt-2 text-sm opacity-60"><div>קוד: {e.code}</div><div>תעריף: ₪{e.wagePerGame}</div><div>מין: {e.gender === 'male' ? 'זכר' : (e.gender === 'female' ? 'נקבה' : 'לא הוגדר')}</div></div></Card>))}</div>{open && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold mb-4">{edit ? 'עריכה' : 'חדש'}</h3><form onSubmit={save} className="space-y-4"><div className="grid grid-cols-2 gap-4"><Input label="שם" name="name" required defaultValue={edit?.name}/><Input label="טלפון" name="phone" required defaultValue={edit?.phone}/><Input label="מייל" name="email" type="email" required defaultValue={edit?.email}/><Input label="קוד" name="code" required defaultValue={edit?.code}/><Input label="כתובת" name="address" className="col-span-2" defaultValue={edit?.address}/><Input label="יום הולדת" name="birthday" type="date" defaultValue={edit?.birthday}/><Input label="שכר למשחק" name="wagePerGame" type="number" required defaultValue={edit?.wagePerGame}/><Input label="הסמכות (מופרד בפסיק)" name="skills" className="col-span-2" defaultValue={edit?.skills?.join(', ')}/><div className="flex flex-col gap-1"><label className="text-sm opacity-70">מין (לניסוח הודעות וואטסאפ)</label><select name="gender" defaultValue={edit?.gender || ''} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"><option value="">-- לא הוגדר (מפעיל/ה) --</option><option value="female">נקבה</option><option value="male">זכר</option></select></div></div><div className="flex gap-2"><input type="checkbox" name="form101" defaultChecked={edit?.form101}/> <label>טופס 101</label></div><div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'שמור בענן'}</Button></div></form></div></div>}</div>);
         };
 
         const AdminTasks = ({ employees, tasks }) => {
