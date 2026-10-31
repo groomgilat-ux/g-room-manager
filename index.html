@@ -535,7 +535,7 @@
                                             return (<div key={i.dateStr + i.time} onClick={handler || undefined} title={i.kind === 'planned' ? `יפתח בסנכרון · זמינים: ${i.cov.map(e => e.name).join(', ')}` : (i.cov && i.cov.length ? `זמינים: ${i.cov.map(e => e.name).join(', ')}` : '')} className={`absolute left-0.5 right-0.5 rounded px-1 text-white text-[11px] leading-tight overflow-hidden z-10 transition-colors ${blockClass[i.kind]}`} style={{ top, height: h }}>
                                                 <div className="font-bold">{i.time}-{minToTime(toMin(i.time) + SLOT_MIN)}</div>
                                                 {i.kind === 'booked' && <><div className="truncate">{i.customerName || 'לקוח'}{i.participants ? ` · ${i.participants}` : ''}</div><div className={`truncate text-[10px] ${operator ? 'text-green-300' : 'text-red-300'}`}>{operator || 'טרם שויך'}{i.cov.length === 0 && !operator ? ' ⚠️' : ''}</div></>}
-                                                {i.kind === 'open' && <div className="truncate">{i.cov.length} עובדים · הזמן +</div>}
+                                                {i.kind === 'open' && <div className="truncate">פנויים: {i.cov.length} · הזמן +</div>}
                                                 {i.kind === 'uncovered' && <div className="truncate">אין עובד</div>}
                                                 {i.kind === 'planned' && <div className="truncate opacity-80">ייפתח</div>}
                                             </div>);
