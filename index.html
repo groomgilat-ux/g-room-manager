@@ -35,11 +35,12 @@
         input[type="date"], input[type="month"], input[type="time"], select { color-scheme: dark; }
 
         /* ===== מצב טלפון: עיצוב זכוכית, כפתורים וטקסט גדולים ===== */
-        html.mglass body { background: radial-gradient(circle at 85% 0%, #4338ca 0, transparent 45%), radial-gradient(circle at 5% 50%, #0f766e 0, transparent 50%), radial-gradient(circle at 90% 100%, #9333ea 0, transparent 50%), #0a0c14 !important; background-attachment: fixed; font-size: 18px; }
-        html.mglass .card-bg { background: rgba(255,255,255,0.09) !important; -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255,255,255,0.18) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.3); border-radius: 24px !important; }
-        html.mglass .bg-gray-900 { background: rgba(18,20,36,0.84) !important; -webkit-backdrop-filter: blur(26px); backdrop-filter: blur(26px); }
-        html.mglass .bg-gray-800, html.mglass .bg-gray-800\/50 { background: rgba(255,255,255,0.1) !important; }
-        html.mglass .border-gray-700, html.mglass .border-gray-800 { border-color: rgba(255,255,255,0.2) !important; }
+        html.glass body { background: radial-gradient(circle at 85% 0%, #4338ca 0, transparent 45%), radial-gradient(circle at 5% 50%, #0f766e 0, transparent 50%), radial-gradient(circle at 90% 100%, #9333ea 0, transparent 50%), #0a0c14 !important; background-attachment: fixed; }
+        html.mglass body { font-size: 18px; }
+        html.glass .card-bg { background: rgba(255,255,255,0.09) !important; -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255,255,255,0.18) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.3); border-radius: 24px !important; }
+        html.glass .bg-gray-900 { background: rgba(18,20,36,0.84) !important; -webkit-backdrop-filter: blur(26px); backdrop-filter: blur(26px); }
+        html.glass .bg-gray-800, html.glass .bg-gray-800\/50 { background: rgba(255,255,255,0.1) !important; }
+        html.glass .border-gray-700, html.glass .border-gray-800 { border-color: rgba(255,255,255,0.2) !important; }
         html.mglass button, html.mglass select, html.mglass input:not([type="checkbox"]):not([type="radio"]) { min-height: 52px; border-radius: 16px; }
         html.mglass button { font-size: 17px; touch-action: manipulation; }
         html.mglass input, html.mglass select, html.mglass textarea { font-size: 17px !important; }
@@ -63,6 +64,16 @@
         .m-row:first-of-type { border-top: none; }
         .m-btn { background: rgba(129,140,248,0.55); border: 1px solid rgba(255,255,255,0.35); box-shadow: inset 0 1px 0 rgba(255,255,255,0.4); color: #fff; border-radius: 22px; padding: 12px 18px; font-weight: bold; min-height: 52px; }
         .m-wide { width: 100%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: 22px; min-height: 56px; font-weight: bold; }
+        html.glass:not(.mglass) .card-bg { border-radius: 20px !important; }
+        html.glass:not(.mglass) button, html.glass:not(.mglass) select, html.glass:not(.mglass) input:not([type="checkbox"]):not([type="radio"]) { border-radius: 12px; }
+        .d-shell { display: flex; gap: 20px; padding: 16px; min-height: 100vh; align-items: flex-start; }
+        .d-side { position: sticky; top: 16px; width: 260px; flex-shrink: 0; height: calc(100vh - 32px); display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 28px; background: rgba(255,255,255,0.1); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%); border: 1px solid rgba(255,255,255,0.22); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 10px 30px rgba(0,0,0,0.4); overflow-y: auto; }
+        .d-sec { font-size: 12px; letter-spacing: .08em; color: rgba(255,255,255,0.5); padding: 12px 12px 4px; }
+        .d-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border-radius: 16px; background: transparent; color: rgba(255,255,255,0.78); font-size: 16px; text-align: right; border: 1px solid transparent; transition: background .15s; }
+        .d-item:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .d-item.on { background: rgba(255,255,255,0.2); color: #fff; border-color: rgba(255,255,255,0.28); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); }
+        .d-item .m-badge { margin-right: auto; margin-left: 0; }
+        .d-main { flex: 1; min-width: 0; padding: 8px 4px 40px; }
         .m-stat b { display: block; font-size: 32px; margin-top: 4px; }
         .zoomctl { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
         html.mglass .zoomctl button { min-width: 56px; font-size: 26px !important; }
@@ -463,10 +474,13 @@
                 try {
                     if (!selectedEmp) {
                         if (!slotData.assignment) { alert('בחר עובד לשיוך'); return; }
-                        await deleteDoc(getDocRef('assignments', assignId)); alert('השיוך הוסר.');
+                        await deleteDoc(getDocRef('assignments', assignId));
+                        { const prev = slotData.assignment && slotData.assignment.employeeId; if (prev && prev !== 'admin' && slotData.dateStr >= ymd(new Date())) sendPush(prev, 'השיוך שלך לתור הוסר', `${formatDateIL(slotData.dateStr)} בשעה ${slotData.time}${slotData.customerName ? ' · ' + slotData.customerName : ''}`); }
+                        alert('השיוך הוסר.');
                     } else {
                         await setDoc(getDocRef('assignments', assignId), { date: slotData.dateStr, time: slotData.time, customerName: slotData.customerName, customerPhone: slotData.customerPhone, players: Number(slotData.participants) || null, employeeId: selectedEmp, room: roomName });
                         if (selectedEmp !== 'admin' && selectedEmp !== (slotData.assignment && slotData.assignment.employeeId) && slotData.dateStr >= ymd(new Date())) sendPush(selectedEmp, 'שויך אליך תור', `${formatDateIL(slotData.dateStr)} בשעה ${slotData.time}${slotData.customerName ? ' · ' + slotData.customerName : ''}`);
+                        { const prev = slotData.assignment && slotData.assignment.employeeId; if (prev && prev !== 'admin' && prev !== selectedEmp && slotData.dateStr >= ymd(new Date())) { const nn = selectedEmp === 'admin' ? 'המנהל' : ((employees || []).find(e => e.id === selectedEmp) || {}).name || 'עובד אחר'; sendPush(prev, 'התור הועבר לעובד אחר', `${formatDateIL(slotData.dateStr)} בשעה ${slotData.time}${slotData.customerName ? ' · ' + slotData.customerName : ''} · עבר ל${nn}`); } }
                         alert('התור שויך בהצלחה!');
                     }
                     onClose();
@@ -1204,6 +1218,46 @@
             </div>);
         };
 
+        const DESK_NAV = [
+            ['', [['home', 'בית', Home]]],
+            ['יומן', [['calendar', 'יומן וזמינות עובדים', Calendar]]],
+            ['כספים', [['groups', 'הכנסות', Coins], ['expenses', 'דוח פיננסי והוצאות', LineChart], ['shifts', 'שכר ומשמרות', FileText]]],
+            ['צוות', [['employees', 'עובדים', Users], ['tasks', 'משימות', CheckSquare], ['requests', 'בקשות', Bell]]],
+            ['תחזוקה', [['issues', 'תקלות', Wrench]]],
+            ['מערכת', [['settings', 'הגדרות', Settings]]],
+        ];
+        const DesktopAdmin = ({ data, settings, user, dbConn, onLogout }) => {
+            const [tab, setTab] = useState(() => (takePendingTab() ? 'calendar' : 'home'));
+            useEffect(() => { const h = () => { if (takePendingTab()) setTab('calendar'); }; window.addEventListener('groom-open-tab', h); return () => window.removeEventListener('groom-open-tab', h); }, []);
+            const pendingReq = (data.requests || []).filter(r => r.status === 'pending'); const pendingShifts = (data.shifts || []).filter(s => s.status === 'pending'); const pendingIssues = (data.issues || []).filter(i => i.status === 'pending'); const pendingCons = (data.constraints || []).filter(c => c.status === 'pending');
+            const badge = { shifts: pendingShifts.length, requests: pendingReq.length, issues: pendingIssues.length, calendar: pendingCons.length };
+            const go = (t, sub) => { const m = { finance: { income: 'groups', report: 'expenses', pay: 'shifts' }, staff: { team: 'employees', tasks: 'tasks', requests: 'requests' } }; setTab(m[t] ? (m[t][sub || Object.keys(m[t])[0]]) : t); window.scrollTo(0, 0); };
+            const titleOf = (id) => { for (const [, items] of DESK_NAV) { const f = items.find(x => x[0] === id); if (f) return f[1]; } return ''; };
+            return (<div className="d-shell">
+                <aside className="d-side">
+                    <div className="flex items-center gap-3 px-2 pt-1 pb-3"><img src="/logo.svg" alt="G-Room" className="h-9 w-auto object-contain"/><div className="min-w-0"><div className="font-bold truncate">{settings.businessName}</div><div className="text-xs opacity-70 flex items-center gap-2">{user.name}<span className={`inline-block w-2 h-2 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500'}`}></span></div></div></div>
+                    {DESK_NAV.map(([sec, items]) => (<div key={sec || 'top'}>{sec && <div className="d-sec">{sec}</div>}{items.map(([id, l, I]) => (<button key={id} type="button" className={`d-item ${tab === id ? 'on' : ''}`} onClick={() => go(id)}><I size={20} />{l}{badge[id] > 0 && <span className="m-badge">{badge[id]}</span>}</button>))}</div>))}
+                    <div style={{ marginTop: 'auto' }}><button type="button" className="d-item" style={{ color: '#fca5a5' }} onClick={onLogout}><LogOut size={20} />יציאה</button></div>
+                </aside>
+                <main className="d-main">
+                    <NotifyBar user={user} />
+                    {tab !== 'home' && <div className="m-h1" style={{ marginBottom: 16 }}>{titleOf(tab)}</div>}
+                    <div className="fade-in" key={tab}>
+                        {tab === 'home' && <div style={{ maxWidth: 900 }}><MobileHome data={data} settings={settings} go={go} /></div>}
+                        {tab === 'calendar' && <AdminConstraints employees={data.employees || []} constraints={data.constraints || []} settings={settings} assignments={data.assignments || []} />}
+                        {tab === 'groups' && <AdminGroups groups={data.groups || []} employees={data.employees || []} settings={settings} shifts={data.shifts || []} />}
+                        {tab === 'expenses' && <AdminExpenses expenses={data.expenses || []} groups={data.groups || []} shifts={data.shifts || []} employees={data.employees || []} settings={settings} />}
+                        {tab === 'shifts' && <AdminReports employees={data.employees || []} shifts={data.shifts || []} settings={settings} />}
+                        {tab === 'employees' && <AdminEmployees employees={data.employees || []} />}
+                        {tab === 'tasks' && <AdminTasks employees={data.employees || []} tasks={data.tasks || []} />}
+                        {tab === 'requests' && (pendingReq.length ? <AdminRequests requests={pendingReq} employees={data.employees || []} /> : <div className="card-bg rounded-xl p-6 opacity-80">אין בקשות ממתינות.</div>)}
+                        {tab === 'issues' && <AdminIssues issues={data.issues || []} employees={data.employees || []} settings={settings} />}
+                        {tab === 'settings' && <AdminSettings settings={settings} />}
+                    </div>
+                </main>
+            </div>);
+        };
+
         function GRoomApp() {
             const [user, setUser] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
@@ -1213,7 +1267,7 @@
             const [login, setLogin] = useState({ code: '', empId: '' });
             const [dbConn, setDbConn] = useState(false);
             const isMobile = useIsMobile();
-            useEffect(() => { document.documentElement.classList.toggle('mglass', isMobile); }, [isMobile]);
+            useEffect(() => { document.documentElement.classList.add('glass'); document.documentElement.classList.toggle('mglass', isMobile); }, [isMobile]);
 
             useEffect(() => {
                 const init = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
@@ -1290,6 +1344,10 @@
                 <div className="min-h-screen font-sans">
                     <main className="px-3 py-4 w-full"><NotifyBar user={currentUser} /><MobileAdmin data={data} settings={settings} onLogout={() => { detachPush(); setCurrentUser(null); setLogin({ code: '', empId: '' }); }} /></main>
                 </div>
+            );
+
+            if (currentUser.role === 'admin') return (
+                <div className="min-h-screen font-sans"><DesktopAdmin data={data} settings={settings} user={currentUser} dbConn={dbConn} onLogout={() => { detachPush(); setCurrentUser(null); setLogin({ code: '', empId: '' }); }} /></div>
             );
 
             return (
