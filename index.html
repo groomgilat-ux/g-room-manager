@@ -716,7 +716,23 @@
             const days = useMemo(() => { const ws = getWeekStart(new Date()); return Array.from({ length: 7 }, (_, i) => addDays(ws, offset * 7 + i)); }, [offset]);
             const fetchWeekSlots = async () => { setLoading(true); try { setSlotsMap(await fetchWeekSlotsMap(days[0])); } catch (e) {} finally { setLoading(false); } };
             useEffect(() => { fetchWeekSlots(); }, [offset]);
+            // סנכרון אוטומטי שקט: כל שינוי בזמינות (או פתיחת השבוע) פותח/סוגר מועדים ב-Tor4You לפי הזמינות, בלי לחיצה ובלי אישור
             const availCons = useMemo(() => (constraints || []).filter(c => c.type === 'available'), [constraints]);
+            const autoRef = React.useRef('');
+            const consSig = (availCons || []).map(c => c.id + c.startTime + c.endTime).sort().join(',');
+            useEffect(() => {
+                const sig = ymd(days[0]) + '|' + consSig + '|' + (employees || []).length; if (autoRef.current === sig) return; autoRef.current = sig;
+                (async () => {
+                    try {
+                        const map = await fetchWeekSlotsMap(days[0]);
+                        const plan = computeSyncPlan({ weekStart: days[0], slotsMap: map, constraints: availCons, employees, settings });
+                        if (!plan.toAdd.length && !plan.toRemove.length) return;
+                        const r = await runSyncQueued(() => executeSyncPlan(plan));
+                        setSyncMsg('🔄 היומן עודכן אוטומטית לפי הזמינות: ' + describeSync(r) + (r.errors.length ? '\n' + r.errors.join('\n') : ''));
+                        await fetchWeekSlots();
+                    } catch (e) {}
+                })();
+            }, [offset, consSig, (employees || []).length]);
             const empName = (id) => id === 'admin' ? 'מנהל' : ((employees || []).find(e => e.id === id) || {}).name || '';
 
             const dayModels = useMemo(() => {
@@ -727,9 +743,6 @@
                         const dur = durOf(s); const cov = coveringEmployees(availCons, employees, dStr, s.time, dur);
                         const assignment = (assignments || []).find(a => a.id === `${dStr}_${s.time.replace(':', '')}`);
                         return { ...s, kind: s.isBooked ? 'booked' : (cov.length ? 'open' : 'uncovered'), dateStr: dStr, cov, assignment, dur };
-                    });
-                    if (dStr >= todayStr) planDayAdds({ d, dStr, existing, constraints: availCons, employees, settings, nowMin, todayStr }).forEach(t => {
-                        const cov = coveringEmployees(availCons, employees, dStr, t); items.push({ kind: 'planned', time: t, dateStr: dStr, cov, dur: SLOT_MIN });
                     });
                     return { d, dStr, items, range: getOpeningRange(d, settings.openingHours) };
                 });
@@ -773,13 +786,12 @@
                             </div>
                             <div className="flex gap-2 flex-wrap justify-center">
                                 <Button onClick={() => setShowNew(true)}><Plus size={16}/> הוסף מועד חדש</Button>
-                                <Button onClick={doSync} disabled={syncing} variant="outline" className="bg-yellow-500/10 border-yellow-500 text-yellow-500 hover:bg-yellow-500/20">{syncing ? <Loader className="animate-spin w-4 h-4"/> : <AlertTriangle size={18}/>} סנכרון יומן עם זמינות העובדים</Button>
                                 <Button onClick={doRemind} disabled={reminding} variant="outline" className="bg-indigo-500/10 border-indigo-500 text-indigo-300 hover:bg-indigo-500/20">{reminding ? <Loader className="animate-spin w-4 h-4"/> : <Bell size={18}/>} שלח תזכורת זמינות לעובדים</Button>
                             </div>
                         </div>
                         {syncMsg && <div className="mb-3 text-sm bg-gray-800/70 border border-gray-700 rounded p-2 whitespace-pre-line">{syncMsg}</div>}
                         {warnings.length > 0 && <div className="mb-3 text-sm bg-red-900/30 border border-red-500/60 rounded p-3"><div className="font-bold text-red-300 mb-1">🚨 תורים שהוזמנו ואין עליהם עובד זמין ({warnings.length})</div>{warnings.map(w => <div key={w.dateStr + w.time}>{formatDateIL(w.dateStr)} בשעה {w.time} - {w.customerName || 'לקוח'} {w.customerPhone ? `(${w.customerPhone})` : ''}</div>)}</div>}
-                        <div className="flex gap-3 text-xs mb-2 flex-wrap opacity-90"><span><span className="inline-block w-3 h-3 rounded bg-green-800 ring-1 ring-green-500 align-middle"></span> פנוי להזמנה</span><span><span className="inline-block w-3 h-3 rounded bg-indigo-900 ring-1 ring-indigo-400 align-middle"></span> הוזמן</span><span><span className="inline-block w-3 h-3 rounded bg-red-900 ring-1 ring-red-500 align-middle"></span> פתוח אך ללא עובד</span><span><span className="inline-block w-3 h-3 rounded border border-dashed border-green-400 align-middle"></span> ייפתח בסנכרון</span></div>
+                        <div className="flex gap-3 text-xs mb-2 flex-wrap opacity-90"><span><span className="inline-block w-3 h-3 rounded bg-green-800 ring-1 ring-green-500 align-middle"></span> פנוי להזמנה</span><span><span className="inline-block w-3 h-3 rounded bg-indigo-900 ring-1 ring-indigo-400 align-middle"></span> הוזמן</span><span><span className="inline-block w-3 h-3 rounded bg-red-900 ring-1 ring-red-500 align-middle"></span> פתוח אך ללא עובד</span></div>
                         <div className="zoomctl"><button type="button" onClick={() => setZoom(ZOOMS[Math.max(0, zIdx - 1)])} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-base leading-none px-3 py-1.5" aria-label="הקטן">−</button><span className="text-sm opacity-80">זום {Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, zIdx + 1)])} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-base leading-none px-3 py-1.5" aria-label="הגדל">+</button><button type="button" onClick={() => setZoom(0.5)} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-sm leading-none px-3 py-1.5">כל השבוע</button></div>
                         <div className="overflow-x-auto"><div style={{ minWidth: Math.round(860 * zoom) + 'px' }}>
                             <div className="flex gap-1 mb-1 text-center font-bold text-dynamic" style={{ fontSize: fs }}>
