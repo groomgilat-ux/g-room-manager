@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>G-Room Manager ERP</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#030712">
@@ -37,6 +37,10 @@
         /* ===== מצב טלפון: עיצוב זכוכית, כפתורים וטקסט גדולים ===== */
         html.glass body { background: radial-gradient(circle at 85% 0%, #4338ca 0, transparent 45%), radial-gradient(circle at 5% 50%, #0f766e 0, transparent 50%), radial-gradient(circle at 90% 100%, #9333ea 0, transparent 50%), #0a0c14 !important; background-attachment: fixed; }
         html.mglass body { font-size: 18px; }
+        html, body { overflow-x: hidden; max-width: 100vw; }
+        body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+        html.mglass main { padding-bottom: calc(120px + env(safe-area-inset-bottom)) !important; }
+        @media (max-height: 540px) { html.mglass .m-nav, html.mglass .emp-tabs { bottom: 6px; } .m-nav button { min-height: 46px; flex-direction: row; gap: 8px; } html.mglass .emp-tabs button { min-height: 46px; flex-direction: row; } html.mglass main { padding-bottom: 90px !important; } }
         html.glass .card-bg { background: rgba(255,255,255,0.09) !important; -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255,255,255,0.18) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.3); border-radius: 24px !important; }
         html.glass .bg-gray-900 { background: rgba(18,20,36,0.84) !important; -webkit-backdrop-filter: blur(26px); backdrop-filter: blur(26px); }
         html.glass .bg-gray-800, html.glass .bg-gray-800\/50 { background: rgba(255,255,255,0.1) !important; }
@@ -49,7 +53,7 @@
         html.mglass .fixed.inset-0 > div { max-width: 100% !important; width: 100% !important; border-radius: 24px; }
         html.mglass .emp-tabs { position: fixed !important; bottom: 14px; left: 12px; right: 12px; width: auto !important; max-width: none !important; z-index: 40; border-radius: 32px !important; padding: 6px !important; display: flex; justify-content: space-around; overflow: visible !important; }
         html.mglass .emp-tabs button { flex: 1; min-height: 58px; padding: 6px 2px !important; font-size: 14px !important; border-radius: 26px !important; flex-direction: column; justify-content: center; gap: 2px !important; }
-        .m-nav { position: fixed; bottom: 14px; left: 12px; right: 12px; z-index: 40; display: flex; justify-content: space-around; padding: 6px; border-radius: 32px; background: rgba(255,255,255,0.12); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%); border: 1px solid rgba(255,255,255,0.22); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 10px 30px rgba(0,0,0,0.4); }
+        .m-nav { position: fixed; bottom: calc(14px + env(safe-area-inset-bottom)); left: calc(12px + env(safe-area-inset-left)); right: calc(12px + env(safe-area-inset-right)); z-index: 40; display: flex; justify-content: space-around; padding: 6px; border-radius: 32px; background: rgba(255,255,255,0.12); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%); border: 1px solid rgba(255,255,255,0.22); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 10px 30px rgba(0,0,0,0.4); }
         .m-nav button { flex: 1; min-height: 60px; border-radius: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 14px !important; color: rgba(255,255,255,0.75); background: transparent; position: relative; }
         .m-nav button.on { background: rgba(255,255,255,0.22); color: #fff; border: 1px solid rgba(255,255,255,0.28); }
         .m-badge { background: #ef4444; color: #fff; border-radius: 10px; font-size: 12px; padding: 0 7px; min-width: 20px; text-align: center; margin-right: 4px; }
@@ -1130,7 +1134,7 @@
         };
 
         const useIsMobile = () => {
-            const q = '(max-width: 640px)';
+            const q = '(max-width: 640px), (pointer: coarse) and (max-height: 540px)'; // טלפון בעמידה או בשכיבה
             const [m, setM] = useState(() => { try { return window.matchMedia(q).matches; } catch (e) { return false; } });
             useEffect(() => { let mq; try { mq = window.matchMedia(q); } catch (e) { return; } const h = () => setM(mq.matches); if (mq.addEventListener) mq.addEventListener('change', h); else mq.addListener(h); return () => { if (mq.removeEventListener) mq.removeEventListener('change', h); else mq.removeListener(h); }; }, []);
             return m;
