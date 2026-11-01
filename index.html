@@ -249,10 +249,23 @@
             const s = toMin(time) - PRE_MIN; const e = toMin(time) + (dur || SLOT_MIN) + POST_MIN;
             return (employees || []).filter(emp => getAvailRanges(constraints, emp.id, dStr).some(r => r.s <= s && r.e >= e));
         };
-        const fetchWeekSlotsMap = async (weekStart) => {
-            const res = await fetch(`${TOR4YOU_WEEK_URL}?fromDate=${ymdCompact(weekStart)}&toDate=${ymdCompact(addDays(weekStart, 6))}`);
-            if (!res.ok) throw new Error('שגיאה בטעינת היומן מ-Tor4You');
-            const data = await res.json(); return data.slotsMap || {};
+        // מטמון קצר + איחוד בקשות זהות, כדי לא לעבור את מגבלת הבקשות של Tor4You. כל כתיבה (POST) מנקה את המטמון.
+        const __wkCache = new Map();
+        try { const __of = window.fetch.bind(window); window.fetch = (u, o) => { const w = o && o.method === 'POST' && String(u).includes('cloudfunctions.net'); if (w) __wkCache.clear(); const p = __of(u, o); if (w) p.then(() => __wkCache.clear(), () => __wkCache.clear()); return p; }; } catch (e) {}
+        const isRateLimit = (x) => /rate limit/i.test(typeof x === 'string' ? x : JSON.stringify(x || ''));
+        const t4yBlocked = () => { try { return Number(localStorage.getItem('groom_t4y_block') || 0) > Date.now(); } catch (e) { return false; } };
+        const t4yBlock = () => { try { localStorage.setItem('groom_t4y_block', String(Date.now() + 10 * 60 * 1000)); } catch (e) {} };
+        const fetchWeekSlotsMap = (weekStart) => {
+            const key = ymdCompact(weekStart); const hit = __wkCache.get(key);
+            if (hit && Date.now() - hit.t < 30000) return hit.p;
+            const p = (async () => {
+                const res = await fetch(`${TOR4YOU_WEEK_URL}?fromDate=${key}&toDate=${ymdCompact(addDays(weekStart, 6))}`);
+                let data = {}; try { data = await res.json(); } catch (e) {}
+                if (!res.ok || data.error) { const msg = String(data.error || ''); if (isRateLimit(msg)) { t4yBlock(); throw new Error('Tor4You הגביל זמנית את מספר הבקשות. נסה שוב בעוד כמה דקות.'); } throw new Error(msg || 'שגיאה בטעינת היומן מ-Tor4You'); }
+                return data.slotsMap || {};
+            })();
+            __wkCache.set(key, { t: Date.now(), p }); p.catch(() => { if (__wkCache.get(key) && __wkCache.get(key).p === p) __wkCache.delete(key); });
+            return p;
         };
         // מועדים לפתיחה ביום: הרשת הקבועה + שרשור של 90 דק' סביב תורים קיימים שאינם על הרשת (כך נפתחים מרב החלונות האפשריים)
         const planDayAdds = ({ d, dStr, existing, constraints, employees, settings, nowMin, todayStr }) => {
@@ -303,6 +316,7 @@
                 if (!r.ok && !d.deletedCount) errors.push('סגירת תורים נכשלה: ' + (d.error || ('שגיאה ' + r.status)));
                 removed = d.deletedCount || 0; (d.errors || []).forEach(e => errors.push(JSON.stringify(e)));
             }
+            if (errors.some(isRateLimit)) { t4yBlock(); errors.length = 0; errors.push('Tor4You הגביל זמנית את מספר הבקשות, הסנכרון יימשך בעוד כמה דקות.'); }
             return { added, removed, errors };
         };
         let __syncChain = Promise.resolve();
@@ -751,12 +765,12 @@
                     else alert(d.sent ? `התזכורת נשלחה ל-${d.sent} מכשירים.` : 'אין מכשירים רשומים להתראות. עובדים צריכים ללחוץ "הפעל התראות" באפליקציה.');
                 } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setReminding(false); }
             };
-            const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); const [showNew, setShowNew] = useState(false); const [syncMsg, setSyncMsg] = useState('');
+            const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); const [showNew, setShowNew] = useState(false); const [syncMsg, setSyncMsg] = useState(''); const [slotsErr, setSlotsErr] = useState('');
             const [zoom, setZoom] = useState(1);
             const ZOOMS = [0.5, 1, 1.5, 2, 2.5]; const zIdx = Math.max(0, ZOOMS.indexOf(zoom));
             const ROW_H = Math.round(28 * Math.max(1, zoom * 1.2)); const fs = Math.min(21, Math.round(11 * Math.max(1, zoom * 1.25))); const todayStr = ymd(new Date());
             const days = useMemo(() => { const ws = getWeekStart(new Date()); return Array.from({ length: 7 }, (_, i) => addDays(ws, offset * 7 + i)); }, [offset]);
-            const fetchWeekSlots = async () => { setLoading(true); try { setSlotsMap(await fetchWeekSlotsMap(days[0])); } catch (e) {} finally { setLoading(false); } };
+            const fetchWeekSlots = async () => { setLoading(true); try { setSlotsMap(await fetchWeekSlotsMap(days[0])); setSlotsErr(''); } catch (e) { setSlotsErr(e.message || 'שגיאה בטעינת היומן'); } finally { setLoading(false); } };
             useEffect(() => { fetchWeekSlots(); }, [offset]);
             // סנכרון אוטומטי שקט: כל שינוי בזמינות (או פתיחת השבוע) פותח/סוגר מועדים ב-Tor4You לפי הזמינות, בלי לחיצה ובלי אישור
             const availCons = useMemo(() => (constraints || []).filter(c => c.type === 'available'), [constraints]);
@@ -764,6 +778,9 @@
             const consSig = (availCons || []).map(c => c.id + c.startTime + c.endTime).sort().join(',');
             useEffect(() => {
                 const sig = ymd(days[0]) + '|' + consSig + '|' + (employees || []).length; if (autoRef.current === sig) return; autoRef.current = sig;
+                if (t4yBlocked()) return;
+                // לא מסנכרנים שוב אם כבר סונכרן אותו מצב ב-10 הדקות האחרונות (חוסך בקשות ל-Tor4You)
+                try { const k = 'groom_autosync_' + ymd(days[0]); const last = JSON.parse(localStorage.getItem(k) || 'null'); const h = String(consSig.length) + ':' + consSig.slice(0, 40) + consSig.slice(-40); if (last && last.h === h && Date.now() - last.t < 10 * 60 * 1000) return; localStorage.setItem(k, JSON.stringify({ h, t: Date.now() })); } catch (e) {}
                 (async () => {
                     try {
                         // כל התהליך (קריאה, תכנון וביצוע) בתור אחד, כדי ששני סנכרונים במקביל לא יפתחו את אותו מועד פעמיים
@@ -835,6 +852,7 @@
                                 <Button onClick={doRemind} disabled={reminding} variant="outline" className="bg-indigo-500/10 border-indigo-500 text-indigo-300 hover:bg-indigo-500/20">{reminding ? <Loader className="animate-spin w-4 h-4"/> : <Bell size={18}/>} שלח תזכורת זמינות לעובדים</Button>
                             </div>
                         </div>
+                        {slotsErr && <div className="mb-3 text-sm bg-red-900/30 border border-red-500/40 rounded p-3 flex items-center justify-between gap-3 flex-wrap"><span>⚠️ לא הצלחתי לטעון את התורים מ-Tor4You: {slotsErr}</span><button type="button" className="chip-btn" onClick={fetchWeekSlots}>נסה שוב</button></div>}
                         {syncMsg && <div className="mb-3 text-sm bg-gray-800/70 border border-gray-700 rounded p-2 whitespace-pre-line">{syncMsg}</div>}
                         {warnings.length > 0 && <div className="mb-3 text-sm bg-red-900/30 border border-red-500/60 rounded p-3"><div className="font-bold text-red-300 mb-1">🚨 תורים שהוזמנו ואין עליהם עובד זמין ({warnings.length})</div>{warnings.map(w => <div key={w.dateStr + w.time}>{formatDateIL(w.dateStr)} בשעה {w.time} - {w.customerName || 'לקוח'} {w.customerPhone ? `(${w.customerPhone})` : ''}</div>)}</div>}
                         <div className="flex gap-3 text-xs mb-2 flex-wrap opacity-90"><span><span className="inline-block w-3 h-3 rounded bg-green-800 ring-1 ring-green-500 align-middle"></span> פנוי להזמנה</span><span><span className="inline-block w-3 h-3 rounded bg-indigo-900 ring-1 ring-indigo-400 align-middle"></span> הוזמן</span><span><span className="inline-block w-3 h-3 rounded bg-red-900 ring-1 ring-red-500 align-middle"></span> פתוח אך ללא עובד</span></div>
