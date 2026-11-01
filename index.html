@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>G-Room Manager ERP</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#030712">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="G-Room">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
@@ -49,6 +55,25 @@
         const TOR4YOU_FUNCTION_URL = `${API_URL}/getTor4YouAppts`;
 
         const getCollectionRef = (n) => collection(db, n); const getDocRef = (n, id) => doc(db, n, id);
+
+        // --- התראות Push ---
+        const VAPID_KEY = "BKAw3HzqeYuTiP36Fq2RS_NK4ByHjLvFjxSi9NKc-6HRuzLI0bLOakpbpmjbAE23txSwyqnEWcKNv-mlnMG76o4";
+        const PUSH_SEND_URL = `${API_URL}/sendPush`;
+        const sendPush = (target, title, body) => { try { fetch(PUSH_SEND_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, title, body }) }).catch(() => {}); } catch (e) {} };
+        const pushSupported = () => typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+        const registerPush = async (user) => {
+            const { getMessaging, getToken, onMessage } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js');
+            const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            await navigator.serviceWorker.ready;
+            const messaging = getMessaging(app);
+            const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+            if (!token) throw new Error('לא התקבל מפתח התראות מהמכשיר');
+            await setDoc(getDocRef('push_tokens', token), { token, employeeId: user.id, role: user.role, updatedAt: new Date().toISOString() });
+            try { localStorage.setItem('groom_push_token', token); } catch (e) {}
+            if (!window.__pushFg) { window.__pushFg = true; onMessage(messaging, (pl) => { const n = pl.notification || {}; reg.showNotification(n.title || 'G-Room', { body: n.body || '', icon: '/icon-192.png' }); }); }
+            return token;
+        };
+        const detachPush = async () => { try { const t = localStorage.getItem('groom_push_token'); if (t) await updateDoc(getDocRef('push_tokens', t), { employeeId: '', role: '' }); } catch (e) {} };
         
         const INITIAL_SETTINGS = { 
             businessName: 'G-Room Escape', adminCode: 'admin123', primaryColor: '#030712', secondaryColor: '#ffffff', roomsList: 'סודו של הודיני', 
@@ -221,7 +246,7 @@
                     if (!data.success) { alert(`שגיאה מהשרת: ${data.error}`); if (needsNewSlot) onRefresh(); return; }
                     let msg = double ? 'התור הכפול הוזמן בהצלחה ונרשם ב-Tor4You!' : 'התור הוזמן בהצלחה ונרשם ב-Tor4You!';
                     if (selectedEmp) {
-                        try { const assignId = `${dateStr}_${time.replace(':', '')}`; await setDoc(getDocRef('assignments', assignId), { date: dateStr, time, customerName: `${first} ${last}`.trim(), customerPhone: cell, players: Number(parts), employeeId: selectedEmp, room: roomName }); msg += '\nהמפעיל שויך בהצלחה.'; }
+                        try { const assignId = `${dateStr}_${time.replace(':', '')}`; await setDoc(getDocRef('assignments', assignId), { date: dateStr, time, customerName: `${first} ${last}`.trim(), customerPhone: cell, players: Number(parts), employeeId: selectedEmp, room: roomName }); msg += '\nהמפעיל שויך בהצלחה.'; if (selectedEmp !== 'admin' && dateStr >= ymd(new Date())) sendPush(selectedEmp, 'שויך אליך תור', `${formatDateIL(dateStr)} בשעה ${time} · ${first} ${last}`.trim()); }
                         catch (err) { msg += `\n⚠️ התור נקבע, אבל שיוך המפעיל נכשל: ${err.message}`; }
                     }
                     alert(msg); onRefresh(); onClose();
@@ -327,6 +352,7 @@
                         await deleteDoc(getDocRef('assignments', assignId)); alert('השיוך הוסר.');
                     } else {
                         await setDoc(getDocRef('assignments', assignId), { date: slotData.dateStr, time: slotData.time, customerName: slotData.customerName, customerPhone: slotData.customerPhone, players: Number(slotData.participants) || null, employeeId: selectedEmp, room: roomName });
+                        if (selectedEmp !== 'admin' && selectedEmp !== (slotData.assignment && slotData.assignment.employeeId) && slotData.dateStr >= ymd(new Date())) sendPush(selectedEmp, 'שויך אליך תור', `${formatDateIL(slotData.dateStr)} בשעה ${slotData.time}${slotData.customerName ? ' · ' + slotData.customerName : ''}`);
                         alert('התור שויך בהצלחה!');
                     }
                     onClose();
@@ -451,7 +477,7 @@
             const pendingIssues = (issues||[]).filter(i => i.status === 'pending').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
             const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
             useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
-            const submitIssue = async (e) => { e.preventDefault(); setSaving(true); try { await addDoc(getCollectionRef('issues'), { room, description: desc, reportedBy: employee.id, reportedByName: employee.name, status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString() }); alert('התקלה דווחה!'); setDesc(''); } catch(err) { alert(err.message); } finally { setSaving(false); } };
+            const submitIssue = async (e) => { e.preventDefault(); setSaving(true); try { await addDoc(getCollectionRef('issues'), { room, description: desc, reportedBy: employee.id, reportedByName: employee.name, status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString() }); sendPush('admin', 'תקלה חדשה', `${employee.name} · ${room}: ${desc}`); alert('התקלה דווחה!'); setDesc(''); } catch(err) { alert(err.message); } finally { setSaving(false); } };
             return (<div className="grid md:grid-cols-2 gap-6"><Card title="דיווח על תקלה בחדר"><form onSubmit={submitIssue} className="space-y-4"><div className="flex flex-col gap-1"><label className="text-sm opacity-70">חדר</label><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>{roomList.map(r => <option key={r} value={r}>{r}</option>)}</select></div><div className="flex flex-col gap-1"><label className="text-sm opacity-70">תיאור (מה נשבר?)</label><textarea className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white h-32 resize-none" value={desc} onChange={e=>setDesc(e.target.value)} required></textarea></div><Button type="submit" variant="danger" disabled={saving} className="w-full">{saving ? 'שולח...' : 'שלח דיווח למנהל'}</Button></form></Card><Card title="תקלות פתוחות"><div className="space-y-3">{pendingIssues.length === 0 && <div className="text-center py-8 opacity-60">הכל תקין! 🎉</div>}{pendingIssues.map(i => (<div key={i.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700"><div className="flex justify-between items-start mb-2"><h4 className="font-bold text-lg text-indigo-300">{i.room}</h4><span className="text-xs opacity-60">{formatDateTimeIL(i.reportedAt)} ע"י {i.reportedByName}</span></div><p className="text-sm text-gray-300 whitespace-pre-wrap">{i.description}</p></div>))}</div></Card></div>);
         };
         const EmployeeTasks = ({ employee, tasks }) => {
@@ -772,7 +798,7 @@
             useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
             const submitIssue = async (e) => { e.preventDefault(); setSaving(true); try { await addDoc(getCollectionRef('issues'), { room, description: desc, reportedBy: 'admin', reportedByName: 'מנהל מערכת', status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString() }); alert('התקלה דווחה.'); setDesc(''); } catch(err) { alert(err.message); } finally { setSaving(false); } };
             const handlePriority = async (id, priority) => { await updateDoc(getDocRef('issues', id), { priority }); };
-            const handleResolve = async (id) => { await updateDoc(getDocRef('issues', id), { status: 'done', resolvedAt: new Date().toISOString() }); };
+            const handleResolve = async (id) => { await updateDoc(getDocRef('issues', id), { status: 'done', resolvedAt: new Date().toISOString() }); const iss = (issues || []).find(i => i.id === id); if (iss && iss.reportedBy && iss.reportedBy !== 'admin') sendPush(iss.reportedBy, 'התקלה טופלה', `${iss.room || ''}: ${iss.description || ''}`); };
             const getPriorityColor = (p) => p === 'דחופה' ? 'text-red-400 bg-red-400/10 border-red-400/30' : (p === 'רגילה' ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' : 'text-green-400 bg-green-400/10 border-green-400/30');
 
             return (
@@ -792,7 +818,7 @@
 
         const AdminTasks = ({ employees, tasks }) => {
             const [desc, setDesc] = useState(''); const [deadline, setDeadline] = useState(''); const [empId, setEmpId] = useState('');
-            const addTask = async (e) => { e.preventDefault(); await addDoc(getCollectionRef('tasks'), { description: desc, deadline, assigneeId: empId, status: 'pending', createdAt: new Date().toISOString() }); alert('משימה נוספה'); setDesc(''); setDeadline(''); setEmpId(''); };
+            const addTask = async (e) => { e.preventDefault(); await addDoc(getCollectionRef('tasks'), { description: desc, deadline, assigneeId: empId, status: 'pending', createdAt: new Date().toISOString() }); if (empId && empId !== 'all') sendPush(empId, 'משימה חדשה', `${desc}${deadline ? ' · עד ' + formatDateIL(deadline) : ''}`); alert('משימה נוספה'); setDesc(''); setDeadline(''); setEmpId(''); };
             const delTask = async (id) => { if(confirm("למחוק משימה?")) await deleteDoc(getDocRef('tasks', id)); };
             const pending = (tasks||[]).filter(t => t.status === 'pending'); const completed = (tasks||[]).filter(t => t.status === 'completed').sort((a,b)=>b.completedAt.localeCompare(a.completedAt)).slice(0, 3);
             return (
@@ -857,6 +883,25 @@
                     </div>
                 </div>
             );
+        };
+
+        const NotifyBar = ({ user }) => {
+            const [state, setState] = useState(() => pushSupported() ? Notification.permission : 'unsupported');
+            const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
+            useEffect(() => { if (state === 'granted') registerPush(user).catch(e => console.warn('push', e)); }, [user.id]);
+            const enable = async () => {
+                setBusy(true);
+                try { const pm = await Notification.requestPermission(); setState(pm); if (pm === 'granted') { await registerPush(user); setMsg('ההתראות הופעלו במכשיר הזה'); } else setMsg('ההרשאה נדחתה. אפשר לשנות אותה בהגדרות הטלפון.'); }
+                catch (e) { setMsg('שגיאה בהפעלת התראות: ' + e.message); } finally { setBusy(false); }
+            };
+            const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent); const standalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+            if (state === 'unsupported') return (isIos && !standalone) ? <div className="bg-indigo-900/40 border border-indigo-500/30 text-sm rounded-lg p-3 mb-4">כדי לקבל התראות באייפון: פתח את האתר ב-Safari, לחץ על כפתור השיתוף ובחר "הוסף למסך הבית", ואז פתח את האפליקציה מהמסך הבית.</div> : null;
+            if (state === 'granted' && !msg) return null;
+            if (state === 'denied') return <div className="bg-yellow-900/30 border border-yellow-600/40 text-sm rounded-lg p-3 mb-4">ההתראות חסומות במכשיר הזה. אפשר להפעיל אותן בהגדרות הטלפון או הדפדפן.</div>;
+            return (<div className="bg-indigo-900/40 border border-indigo-500/30 rounded-lg p-3 mb-4 flex items-center justify-between gap-3 flex-wrap">
+                <span className="text-sm">{msg || 'רוצה לקבל התראות על תורים, משימות ותקלות?'}</span>
+                {state !== 'granted' && <Button onClick={enable} disabled={busy}>{busy ? 'מפעיל...' : 'הפעל התראות'}</Button>}
+            </div>);
         };
 
         function GRoomApp() {
@@ -950,9 +995,10 @@
                                 <div className={`w-2 h-2 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500'}`}></div>
                             </span>
                         </div>
-                        <Button variant="ghost" onClick={() => {setCurrentUser(null); setLogin({code:'', empId:''});}} className="text-red-400 hover:bg-red-900/20"><LogOut size={18} /> <span className="hidden sm:inline">יציאה</span></Button>
+                        <Button variant="ghost" onClick={() => {detachPush(); setCurrentUser(null); setLogin({code:'', empId:''});}} className="text-red-400 hover:bg-red-900/20"><LogOut size={18} /> <span className="hidden sm:inline">יציאה</span></Button>
                     </header>
                     <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
+                        <NotifyBar user={currentUser} />
                         {currentUser.role === 'admin' ? <AdminDashboard data={data} settings={settings} /> : <EmployeeDashboard employee={currentUser} data={data} settings={settings} />}
                     </main>
                 </div>
