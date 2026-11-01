@@ -59,7 +59,7 @@
         // --- התראות Push ---
         const VAPID_KEY = "BKAw3HzqeYuTiP36Fq2RS_NK4ByHjLvFjxSi9NKc-6HRuzLI0bLOakpbpmjbAE23txSwyqnEWcKNv-mlnMG76o4";
         const PUSH_SEND_URL = `${API_URL}/sendPush`;
-        const sendPush = (target, title, body) => { try { fetch(PUSH_SEND_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, title, body }) }).catch(() => {}); } catch (e) {} };
+        const sendPush = (target, title, body, tab) => { try { fetch(PUSH_SEND_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, title, body, tab }) }).catch(() => {}); } catch (e) {} };
         const pushSupported = () => typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
         const registerPush = async (user) => {
             const { getMessaging, getToken, onMessage } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js');
@@ -70,9 +70,13 @@
             if (!token) throw new Error('לא התקבל מפתח התראות מהמכשיר');
             await setDoc(getDocRef('push_tokens', token), { token, employeeId: user.id, role: user.role, updatedAt: new Date().toISOString() });
             try { localStorage.setItem('groom_push_token', token); } catch (e) {}
-            if (!window.__pushFg) { window.__pushFg = true; onMessage(messaging, (pl) => { const n = pl.notification || {}; reg.showNotification(n.title || 'G-Room', { body: n.body || '', icon: '/icon-192.png' }); }); }
+            if (!window.__pushFg) { window.__pushFg = true; onMessage(messaging, (pl) => { const n = pl.data || pl.notification || {}; reg.showNotification(n.title || 'G-Room', { body: n.body || '', icon: '/icon-192.png', data: { tab: n.tab || '' } }); }); }
             return token;
         };
+        const TAB_MAP = { availability: 'constraints' };
+        try { const q = new URLSearchParams(location.search).get('tab'); if (q) window.__pendingTab = q; } catch (e) {}
+        try { if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.openTab) { window.__pendingTab = e.data.openTab; window.dispatchEvent(new Event('groom-open-tab')); } }); } catch (e) {}
+        const takePendingTab = () => { const t = window.__pendingTab; window.__pendingTab = null; return t ? (TAB_MAP[t] || t) : null; };
         const detachPush = async () => { try { const t = localStorage.getItem('groom_push_token'); if (t) await updateDoc(getDocRef('push_tokens', t), { employeeId: '', role: '' }); } catch (e) {} };
         
         const INITIAL_SETTINGS = { 
@@ -558,7 +562,8 @@
         const EmployeeDashboard = ({ employee: sessionUser, data, settings }) => {
             const empDoc = (data.employees||[]).find(e => e.id === sessionUser.id) || sessionUser.data || {};
             const employee = { ...empDoc, id: sessionUser.id, name: sessionUser.name || empDoc.name, role: 'employee' };
-            const [tab, setTab] = useState('upcoming');
+            const [tab, setTab] = useState(() => takePendingTab() || 'upcoming');
+            useEffect(() => { const h = () => { const t = takePendingTab(); if (t) setTab(t); }; window.addEventListener('groom-open-tab', h); return () => window.removeEventListener('groom-open-tab', h); }, []);
             const myPendingTasks = (data.tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
             const issuesCount = (data.issues||[]).filter(i => i.status === 'pending').length; 
             const myAssignments = (data.assignments||[]).filter(a => a.employeeId === employee.id && (a.date||'') >= new Date().toISOString().slice(0, 10));
@@ -582,6 +587,17 @@
         // --- Admin Dashboards ---
         const AdminConstraints = ({ employees, constraints, settings, assignments }) => {
             const [offset, setOffset] = useState(0); const [slotsMap, setSlotsMap] = useState({}); const [loading, setLoading] = useState(false); const [syncing, setSyncing] = useState(false);
+            const [reminding, setReminding] = useState(false);
+            const doRemind = async () => {
+                if (!confirm('לשלוח לכל העובדים התראה לדווח זמינות לשבוע הקרוב?')) return;
+                setReminding(true);
+                try {
+                    const r = await fetch(PUSH_SEND_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: 'employees', title: 'תזכורת: דיווח זמינות', body: 'נא לעדכן זמינות לשבוע הקרוב', tab: 'availability' }) });
+                    const d = await r.json().catch(() => ({}));
+                    if (!d.success) alert('שליחת התזכורת נכשלה: ' + (d.error || ('שגיאה ' + r.status + ' (האם פונקציות השרת עודכנו?)')));
+                    else alert(d.sent ? `התזכורת נשלחה ל-${d.sent} מכשירים.` : 'אין מכשירים רשומים להתראות. עובדים צריכים ללחוץ "הפעל התראות" באפליקציה.');
+                } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setReminding(false); }
+            };
             const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); const [showNew, setShowNew] = useState(false); const [syncMsg, setSyncMsg] = useState('');
             const ROW_H = 28; const todayStr = ymd(new Date());
             const days = useMemo(() => { const ws = getWeekStart(new Date()); return Array.from({ length: 7 }, (_, i) => addDays(ws, offset * 7 + i)); }, [offset]);
@@ -648,6 +664,7 @@
                             <div className="flex gap-2 flex-wrap justify-center">
                                 <Button onClick={() => setShowNew(true)}><Plus size={16}/> הוסף מועד חדש</Button>
                                 <Button onClick={doSync} disabled={syncing} variant="outline" className="bg-yellow-500/10 border-yellow-500 text-yellow-500 hover:bg-yellow-500/20">{syncing ? <Loader className="animate-spin w-4 h-4"/> : <AlertTriangle size={18}/>} סנכרון יומן עם זמינות העובדים</Button>
+                                <Button onClick={doRemind} disabled={reminding} variant="outline" className="bg-indigo-500/10 border-indigo-500 text-indigo-300 hover:bg-indigo-500/20">{reminding ? <Loader className="animate-spin w-4 h-4"/> : <Bell size={18}/>} שלח תזכורת זמינות לעובדים</Button>
                             </div>
                         </div>
                         {syncMsg && <div className="mb-3 text-sm bg-gray-800/70 border border-gray-700 rounded p-2 whitespace-pre-line">{syncMsg}</div>}
