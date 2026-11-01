@@ -65,7 +65,7 @@
         .m-wide { width: 100%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: 22px; min-height: 56px; font-weight: bold; }
         .m-stat b { display: block; font-size: 32px; margin-top: 4px; }
         .zoomctl { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-        .zoomctl button { min-width: 56px; font-size: 26px !important; }
+        html.mglass .zoomctl button { min-width: 56px; font-size: 26px !important; }
 
         .gl-wrap { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: radial-gradient(circle at 50% 40%, #323b46 0, #0b0f14 72%); }
         .gl-svg { width: min(86vw, 520px); height: auto; overflow: visible; }
@@ -215,18 +215,32 @@
             if (!res.ok) throw new Error('שגיאה בטעינת היומן מ-Tor4You');
             const data = await res.json(); return data.slotsMap || {};
         };
+        // מועדים לפתיחה ביום: הרשת הקבועה + שרשור של 90 דק' סביב תורים קיימים שאינם על הרשת (כך נפתחים מרב החלונות האפשריים)
+        const planDayAdds = ({ d, dStr, existing, constraints, employees, settings, nowMin, todayStr }) => {
+            const r = getOpeningRange(d, settings.openingHours); if (!r) return [];
+            const GAP = STEP_MIN - SLOT_MIN;
+            const occ = (existing || []).map(s => ({ a: toMin(s.time), b: toMin(s.time) + durOf(s) }));
+            const anchored = new Set();
+            occ.forEach(o => { for (let t = o.b + GAP; t < r.close; t += STEP_MIN) anchored.add(t); for (let t = o.a - STEP_MIN; t >= r.open; t -= STEP_MIN) anchored.add(t); });
+            const grid = candidateTimes(d, settings.openingHours).map(toMin);
+            const order = [...[...anchored].sort((x, y) => x - y), ...grid.filter(t => !anchored.has(t))];
+            const out = [];
+            order.forEach(t => {
+                if (dStr === todayStr && t <= nowMin) return;
+                if (occ.some(o => t < o.b + GAP && o.a < t + SLOT_MIN + GAP)) return;
+                if (coveringEmployees(constraints, employees, dStr, minToTime(t)).length === 0) return;
+                out.push(t); occ.push({ a: t, b: t + SLOT_MIN });
+            });
+            return out.sort((x, y) => x - y).map(minToTime);
+        };
         // מה צריך לפתוח, מה לסגור, ועל אילו תורים שכבר הוזמנו אין עובד. לעולם לא נוגע בתורים שהוזמנו.
         const computeSyncPlan = ({ weekStart, slotsMap, constraints, employees, settings }) => {
             const now = new Date(); const todayStr = ymd(now); const nowMin = now.getHours() * 60 + now.getMinutes();
             const toAdd = [], toRemove = [], warnings = [];
             for (let i = 0; i < 7; i++) {
                 const d = addDays(weekStart, i); const dStr = ymd(d); if (dStr < todayStr) continue;
-                const existing = slotsMap[dStr] || []; const have = new Set(existing.map(s => s.time));
-                candidateTimes(d, settings.openingHours).forEach(t => {
-                    if (have.has(t)) return; if (dStr === todayStr && toMin(t) <= nowMin) return;
-                    if (existing.some(s => toMin(s.time) < toMin(t) + SLOT_MIN && toMin(s.time) + durOf(s) > toMin(t))) return; // חופף למועד קיים (למשל תור כפול)
-                    if (coveringEmployees(constraints, employees, dStr, t).length > 0) toAdd.push({ date: dStr, time: t });
-                });
+                const existing = slotsMap[dStr] || [];
+                planDayAdds({ d, dStr, existing, constraints, employees, settings, nowMin, todayStr }).forEach(t => toAdd.push({ date: dStr, time: t }));
                 existing.forEach(s => {
                     if (coveringEmployees(constraints, employees, dStr, s.time, durOf(s)).length > 0) return;
                     if (s.isBooked || s.customerName || Number(s.participants) > 0) { warnings.push({ date: dStr, time: s.time, customerName: s.customerName }); return; }
@@ -714,11 +728,8 @@
                         const assignment = (assignments || []).find(a => a.id === `${dStr}_${s.time.replace(':', '')}`);
                         return { ...s, kind: s.isBooked ? 'booked' : (cov.length ? 'open' : 'uncovered'), dateStr: dStr, cov, assignment, dur };
                     });
-                    const have = new Set(existing.map(s => s.time));
-                    if (dStr >= todayStr) candidateTimes(d, settings.openingHours).forEach(t => {
-                        if (have.has(t) || (dStr === todayStr && toMin(t) <= nowMin)) return;
-                        if (existing.some(s => toMin(s.time) < toMin(t) + SLOT_MIN && toMin(s.time) + durOf(s) > toMin(t))) return;
-                        const cov = coveringEmployees(availCons, employees, dStr, t); if (cov.length) items.push({ kind: 'planned', time: t, dateStr: dStr, cov, dur: SLOT_MIN });
+                    if (dStr >= todayStr) planDayAdds({ d, dStr, existing, constraints: availCons, employees, settings, nowMin, todayStr }).forEach(t => {
+                        const cov = coveringEmployees(availCons, employees, dStr, t); items.push({ kind: 'planned', time: t, dateStr: dStr, cov, dur: SLOT_MIN });
                     });
                     return { d, dStr, items, range: getOpeningRange(d, settings.openingHours) };
                 });
@@ -769,7 +780,7 @@
                         {syncMsg && <div className="mb-3 text-sm bg-gray-800/70 border border-gray-700 rounded p-2 whitespace-pre-line">{syncMsg}</div>}
                         {warnings.length > 0 && <div className="mb-3 text-sm bg-red-900/30 border border-red-500/60 rounded p-3"><div className="font-bold text-red-300 mb-1">🚨 תורים שהוזמנו ואין עליהם עובד זמין ({warnings.length})</div>{warnings.map(w => <div key={w.dateStr + w.time}>{formatDateIL(w.dateStr)} בשעה {w.time} - {w.customerName || 'לקוח'} {w.customerPhone ? `(${w.customerPhone})` : ''}</div>)}</div>}
                         <div className="flex gap-3 text-xs mb-2 flex-wrap opacity-90"><span><span className="inline-block w-3 h-3 rounded bg-green-800 ring-1 ring-green-500 align-middle"></span> פנוי להזמנה</span><span><span className="inline-block w-3 h-3 rounded bg-indigo-900 ring-1 ring-indigo-400 align-middle"></span> הוזמן</span><span><span className="inline-block w-3 h-3 rounded bg-red-900 ring-1 ring-red-500 align-middle"></span> פתוח אך ללא עובד</span><span><span className="inline-block w-3 h-3 rounded border border-dashed border-green-400 align-middle"></span> ייפתח בסנכרון</span></div>
-                        <div className="zoomctl"><button type="button" onClick={() => setZoom(ZOOMS[Math.max(0, zIdx - 1)])} className="bg-gray-800 border border-gray-700 rounded-lg text-white" aria-label="הקטן">−</button><span className="text-sm opacity-80">זום {Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, zIdx + 1)])} className="bg-gray-800 border border-gray-700 rounded-lg text-white" aria-label="הגדל">+</button><button type="button" onClick={() => setZoom(0.5)} className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3">כל השבוע</button></div>
+                        <div className="zoomctl"><button type="button" onClick={() => setZoom(ZOOMS[Math.max(0, zIdx - 1)])} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-base leading-none px-3 py-1.5" aria-label="הקטן">−</button><span className="text-sm opacity-80">זום {Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, zIdx + 1)])} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-base leading-none px-3 py-1.5" aria-label="הגדל">+</button><button type="button" onClick={() => setZoom(0.5)} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-sm leading-none px-3 py-1.5">כל השבוע</button></div>
                         <div className="overflow-x-auto"><div style={{ minWidth: Math.round(860 * zoom) + 'px' }}>
                             <div className="flex gap-1 mb-1 text-center font-bold text-dynamic" style={{ fontSize: fs }}>
                                 <div className="w-14 shrink-0" style={{ width: zoom > 1 ? 18 + fs * 3 : undefined }}></div>
