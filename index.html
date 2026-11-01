@@ -33,13 +33,39 @@
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
         .fade-in { animation: fadeIn 0.3s ease-in; } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         input[type="date"], input[type="month"], input[type="time"], select { color-scheme: dark; }
-        @media (max-width: 640px) {
-            button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
-            input, select, textarea { font-size: 16px !important; }
-            button { touch-action: manipulation; }
-            .fixed.inset-0 > div { max-width: 100% !important; border-radius: 16px; }
-            main { padding-left: 12px !important; padding-right: 12px !important; }
-        }
+
+        /* ===== מצב טלפון: עיצוב זכוכית, כפתורים וטקסט גדולים ===== */
+        html.mglass body { background: radial-gradient(circle at 85% 0%, #4338ca 0, transparent 45%), radial-gradient(circle at 5% 50%, #0f766e 0, transparent 50%), radial-gradient(circle at 90% 100%, #9333ea 0, transparent 50%), #0a0c14 !important; background-attachment: fixed; font-size: 18px; }
+        html.mglass .card-bg { background: rgba(255,255,255,0.09) !important; -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255,255,255,0.18) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.3); border-radius: 24px !important; }
+        html.mglass .bg-gray-900 { background: rgba(18,20,36,0.84) !important; -webkit-backdrop-filter: blur(26px); backdrop-filter: blur(26px); }
+        html.mglass .bg-gray-800, html.mglass .bg-gray-800\/50 { background: rgba(255,255,255,0.1) !important; }
+        html.mglass .border-gray-700, html.mglass .border-gray-800 { border-color: rgba(255,255,255,0.2) !important; }
+        html.mglass button, html.mglass select, html.mglass input:not([type="checkbox"]):not([type="radio"]) { min-height: 52px; border-radius: 16px; }
+        html.mglass button { font-size: 17px; touch-action: manipulation; }
+        html.mglass input, html.mglass select, html.mglass textarea { font-size: 17px !important; }
+        html.mglass .text-xs { font-size: 14px !important; } html.mglass .text-sm { font-size: 16px !important; }
+        html.mglass main { padding-left: 12px !important; padding-right: 12px !important; padding-top: 16px !important; padding-bottom: 120px !important; }
+        html.mglass .fixed.inset-0 > div { max-width: 100% !important; width: 100% !important; border-radius: 24px; }
+        html.mglass .emp-tabs { position: fixed !important; bottom: 14px; left: 12px; right: 12px; width: auto !important; max-width: none !important; z-index: 40; border-radius: 32px !important; padding: 6px !important; display: flex; justify-content: space-around; overflow: visible !important; }
+        html.mglass .emp-tabs button { flex: 1; min-height: 58px; padding: 6px 2px !important; font-size: 14px !important; border-radius: 26px !important; flex-direction: column; justify-content: center; gap: 2px !important; }
+        .m-nav { position: fixed; bottom: 14px; left: 12px; right: 12px; z-index: 40; display: flex; justify-content: space-around; padding: 6px; border-radius: 32px; background: rgba(255,255,255,0.12); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%); border: 1px solid rgba(255,255,255,0.22); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 10px 30px rgba(0,0,0,0.4); }
+        .m-nav button { flex: 1; min-height: 60px; border-radius: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 14px !important; color: rgba(255,255,255,0.75); background: transparent; position: relative; }
+        .m-nav button.on { background: rgba(255,255,255,0.22); color: #fff; border: 1px solid rgba(255,255,255,0.28); }
+        .m-badge { background: #ef4444; color: #fff; border-radius: 10px; font-size: 12px; padding: 0 7px; min-width: 20px; text-align: center; margin-right: 4px; }
+        .m-nav .m-badge { position: absolute; top: 2px; left: 50%; margin-left: 8px; }
+        .m-seg { display: flex; gap: 4px; padding: 5px; border-radius: 28px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); margin-bottom: 14px; }
+        .m-seg button { flex: 1; min-height: 50px; border-radius: 24px; background: transparent; color: rgba(255,255,255,0.8); font-size: 16px !important; }
+        .m-seg button.on { background: rgba(255,255,255,0.22); color: #fff; border: 1px solid rgba(255,255,255,0.3); }
+        .m-card { background: rgba(255,255,255,0.09); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255,255,255,0.18); box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.3); border-radius: 24px; padding: 16px; }
+        .m-alert { background: rgba(248,113,113,0.16); border-color: rgba(248,113,113,0.45); }
+        .m-h1 { font-size: 28px; font-weight: bold; } .m-sub { font-size: 16px; color: rgba(255,255,255,0.7); }
+        .m-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.14); font-size: 17px; }
+        .m-row:first-of-type { border-top: none; }
+        .m-btn { background: rgba(129,140,248,0.55); border: 1px solid rgba(255,255,255,0.35); box-shadow: inset 0 1px 0 rgba(255,255,255,0.4); color: #fff; border-radius: 22px; padding: 12px 18px; font-weight: bold; min-height: 52px; }
+        .m-wide { width: 100%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: 22px; min-height: 56px; font-weight: bold; }
+        .m-stat b { display: block; font-size: 32px; margin-top: 4px; }
+        .zoomctl { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .zoomctl button { min-width: 56px; font-size: 26px !important; }
     </style>
 </head>
 <body>
@@ -47,7 +73,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History, MessageCircle } from 'lucide-react';
+        import { User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History, MessageCircle, Home, Menu } from 'lucide-react';
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import { getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
@@ -601,6 +627,7 @@
         const EmployeeDashboard = ({ employee: sessionUser, data, settings }) => {
             const empDoc = (data.employees||[]).find(e => e.id === sessionUser.id) || sessionUser.data || {};
             const employee = { ...empDoc, id: sessionUser.id, name: sessionUser.name || empDoc.name, role: 'employee' };
+            const mob = useIsMobile();
             const [tab, setTab] = useState(() => takePendingTab() || 'upcoming');
             useEffect(() => { const h = () => { const t = takePendingTab(); if (t) setTab(t); }; window.addEventListener('groom-open-tab', h); return () => window.removeEventListener('groom-open-tab', h); }, []);
             const myPendingTasks = (data.tasks||[]).filter(t => t.assigneeId === employee.id && t.status === 'pending');
@@ -608,9 +635,9 @@
             const myAssignments = (data.assignments||[]).filter(a => a.employeeId === employee.id && (a.date||'') >= new Date().toISOString().slice(0, 10));
             return (
                 <div className="space-y-6">
-                    <div className="flex card-bg p-1 rounded-lg w-fit overflow-x-auto max-w-full">
-                        {[{id:'upcoming', l:'תורים עתידיים', c:myAssignments.length, color:'bg-blue-500'}, {id:'report', l:'דיווח והיסטוריה'}, {id:'constraints', l:'זמינות'}, {id:'issues', l:'תקלות', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל'}].map(t => (
-                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{t.l}{t.c > 0 && <span className={`${t.color} text-white text-xs px-1.5 py-0.5 rounded-full font-bold`}>{t.c}</span>}</button>
+                    <div className="flex card-bg p-1 rounded-lg w-fit overflow-x-auto max-w-full emp-tabs">
+                        {[{id:'upcoming', l:'תורים עתידיים', s:'תורים', c:myAssignments.length, color:'bg-blue-500'}, {id:'report', l:'דיווח והיסטוריה', s:'דיווח'}, {id:'constraints', l:'זמינות', s:'זמינות'}, {id:'issues', l:'תקלות', s:'תקלות', c:issuesCount, color:'bg-orange-500'}, {id:'tasks', l:'משימות', s:'משימות', c:myPendingTasks.length, color:'bg-red-500'}, {id:'profile', l:'פרופיל', s:'פרופיל'}].map(t => (
+                            <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{mob ? t.s : t.l}{t.c > 0 && <span className={`${t.color} text-white text-xs px-1.5 py-0.5 rounded-full font-bold`}>{t.c}</span>}</button>
                         ))}
                     </div>
                     {tab==='upcoming' && <EmployeeUpcoming employee={employee} assignments={data.assignments||[]} settings={settings}/>}
@@ -638,7 +665,9 @@
                 } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setReminding(false); }
             };
             const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); const [showNew, setShowNew] = useState(false); const [syncMsg, setSyncMsg] = useState('');
-            const ROW_H = 28; const todayStr = ymd(new Date());
+            const [zoom, setZoom] = useState(1);
+            const ZOOMS = [0.5, 1, 1.5, 2, 2.5]; const zIdx = Math.max(0, ZOOMS.indexOf(zoom));
+            const ROW_H = Math.round(28 * Math.max(1, zoom * 1.2)); const fs = Math.min(21, Math.round(11 * Math.max(1, zoom * 1.25))); const todayStr = ymd(new Date());
             const days = useMemo(() => { const ws = getWeekStart(new Date()); return Array.from({ length: 7 }, (_, i) => addDays(ws, offset * 7 + i)); }, [offset]);
             const fetchWeekSlots = async () => { setLoading(true); try { setSlotsMap(await fetchWeekSlotsMap(days[0])); } catch (e) {} finally { setLoading(false); } };
             useEffect(() => { fetchWeekSlots(); }, [offset]);
@@ -709,13 +738,14 @@
                         {syncMsg && <div className="mb-3 text-sm bg-gray-800/70 border border-gray-700 rounded p-2 whitespace-pre-line">{syncMsg}</div>}
                         {warnings.length > 0 && <div className="mb-3 text-sm bg-red-900/30 border border-red-500/60 rounded p-3"><div className="font-bold text-red-300 mb-1">🚨 תורים שהוזמנו ואין עליהם עובד זמין ({warnings.length})</div>{warnings.map(w => <div key={w.dateStr + w.time}>{formatDateIL(w.dateStr)} בשעה {w.time} - {w.customerName || 'לקוח'} {w.customerPhone ? `(${w.customerPhone})` : ''}</div>)}</div>}
                         <div className="flex gap-3 text-xs mb-2 flex-wrap opacity-90"><span><span className="inline-block w-3 h-3 rounded bg-green-800 ring-1 ring-green-500 align-middle"></span> פנוי להזמנה</span><span><span className="inline-block w-3 h-3 rounded bg-indigo-900 ring-1 ring-indigo-400 align-middle"></span> הוזמן</span><span><span className="inline-block w-3 h-3 rounded bg-red-900 ring-1 ring-red-500 align-middle"></span> פתוח אך ללא עובד</span><span><span className="inline-block w-3 h-3 rounded border border-dashed border-green-400 align-middle"></span> ייפתח בסנכרון</span></div>
-                        <div className="overflow-x-auto"><div className="min-w-[860px]">
-                            <div className="flex gap-1 mb-1 text-center font-bold text-dynamic">
-                                <div className="w-14 shrink-0"></div>
-                                {dayModels.map(m => <div key={m.dStr} className={`flex-1 p-2 text-sm rounded ${m.dStr === todayStr ? 'bg-indigo-700' : 'bg-gray-800'}`}>יום {DAY_NAMES_HE[m.d.getDay()]} {m.d.getDate()}/{m.d.getMonth() + 1}</div>)}
+                        <div className="zoomctl"><button type="button" onClick={() => setZoom(ZOOMS[Math.max(0, zIdx - 1)])} className="bg-gray-800 border border-gray-700 rounded-lg text-white" aria-label="הקטן">−</button><span className="text-sm opacity-80">זום {Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, zIdx + 1)])} className="bg-gray-800 border border-gray-700 rounded-lg text-white" aria-label="הגדל">+</button><button type="button" onClick={() => setZoom(0.5)} className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3">כל השבוע</button></div>
+                        <div className="overflow-x-auto"><div style={{ minWidth: Math.round(860 * zoom) + 'px' }}>
+                            <div className="flex gap-1 mb-1 text-center font-bold text-dynamic" style={{ fontSize: fs }}>
+                                <div className="w-14 shrink-0" style={{ width: zoom > 1 ? 18 + fs * 3 : undefined }}></div>
+                                {dayModels.map(m => <div key={m.dStr} className={`flex-1 p-2 rounded ${m.dStr === todayStr ? 'bg-indigo-700' : 'bg-gray-800'}`} style={{ fontSize: Math.max(12, fs - 1) }}>יום {DAY_NAMES_HE[m.d.getDay()]} {m.d.getDate()}/{m.d.getMonth() + 1}</div>)}
                             </div>
                             <div className="flex gap-1">
-                                <div className="w-14 shrink-0 relative text-center text-[11px]" style={{ height: gridH }}>{hourLabels.map((mn, i) => <div key={mn} className={`absolute left-0 right-0 ${mn % 60 === 0 ? 'font-bold' : 'opacity-50'}`} style={{ top: i * ROW_H, height: ROW_H, lineHeight: ROW_H + 'px' }}>{minToTime(mn)}</div>)}</div>
+                                <div className="w-14 shrink-0 relative text-center" style={{ height: gridH, fontSize: fs, width: zoom > 1 ? 18 + fs * 3 : undefined }}>{hourLabels.map((mn, i) => <div key={mn} className={`absolute left-0 right-0 ${mn % 60 === 0 ? 'font-bold' : 'opacity-50'}`} style={{ top: i * ROW_H, height: ROW_H, lineHeight: ROW_H + 'px' }}>{minToTime(mn)}</div>)}</div>
                                 {dayModels.map(m => (
                                     <div key={m.dStr} className="flex-1 relative rounded overflow-hidden bg-stone-700/40" style={{ height: gridH, backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${ROW_H - 1}px, rgba(255,255,255,0.07) ${ROW_H - 1}px, rgba(255,255,255,0.07) ${ROW_H}px)` }}>
                                         {m.range && <div className="absolute left-0 right-0 bg-gray-900/70" style={{ top: Math.max(0, yOf(m.range.open)), height: Math.max(0, Math.min(gridH, yOf(m.range.close)) - Math.max(0, yOf(m.range.open))), backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${ROW_H - 1}px, rgba(255,255,255,0.07) ${ROW_H - 1}px, rgba(255,255,255,0.07) ${ROW_H}px)` }}></div>}
@@ -725,9 +755,9 @@
                                             const top = yOf(sortKey(i.time)) + 1; const iDur = i.dur || SLOT_MIN; const h = (iDur / 30) * ROW_H - 2;
                                             const handler = i.kind === 'booked' ? () => setAssignSlot(i) : (i.kind === 'planned' ? null : () => setAddApptSlot(i));
                                             const operator = i.assignment ? empName(i.assignment.employeeId) : null;
-                                            return (<div key={i.dateStr + i.time} onClick={handler || undefined} title={i.kind === 'planned' ? `יפתח בסנכרון · זמינים: ${i.cov.map(e => e.name).join(', ')}` : (i.cov && i.cov.length ? `זמינים: ${i.cov.map(e => e.name).join(', ')}` : '')} className={`absolute left-0.5 right-0.5 rounded px-1 text-white text-[11px] leading-tight overflow-hidden z-10 transition-colors ${blockClass[i.kind]}`} style={{ top, height: h }}>
+                                            return (<div key={i.dateStr + i.time} onClick={handler || undefined} title={i.kind === 'planned' ? `יפתח בסנכרון · זמינים: ${i.cov.map(e => e.name).join(', ')}` : (i.cov && i.cov.length ? `זמינים: ${i.cov.map(e => e.name).join(', ')}` : '')} className={`absolute left-0.5 right-0.5 rounded px-1 text-white leading-tight overflow-hidden z-10 transition-colors ${blockClass[i.kind]}`} style={{ top, height: h, fontSize: fs }}>
                                                 <div className="font-bold">{i.time}-{minToTime(toMin(i.time) + iDur)}{iDur >= DOUBLE_MIN ? ' · כפול' : ''}</div>
-                                                {i.kind === 'booked' && <><div className="truncate">{i.customerName || 'לקוח'}{i.participants ? ` · ${i.participants}` : ''}</div><div className={`truncate text-[10px] ${operator ? 'text-green-300' : 'text-red-300'}`}>{operator || 'טרם שויך'}{i.cov.length === 0 && !operator ? ' ⚠️' : ''}</div></>}
+                                                {i.kind === 'booked' && <><div className="truncate">{i.customerName || 'לקוח'}{i.participants ? ` · ${i.participants}` : ''}</div><div className={`truncate ${operator ? 'text-green-300' : 'text-red-300'}`}>{operator || 'טרם שויך'}{i.cov.length === 0 && !operator ? ' ⚠️' : ''}</div></>}
                                                 {i.kind === 'open' && <div className="truncate">פנויים: {i.cov.length} · הזמן +</div>}
                                                 {i.kind === 'uncovered' && <div className="truncate">אין עובד</div>}
                                                 {i.kind === 'planned' && <div className="truncate opacity-80">ייפתח</div>}
@@ -1007,6 +1037,12 @@
             );
         };
 
+        const useIsMobile = () => {
+            const q = '(max-width: 640px)';
+            const [m, setM] = useState(() => { try { return window.matchMedia(q).matches; } catch (e) { return false; } });
+            useEffect(() => { let mq; try { mq = window.matchMedia(q); } catch (e) { return; } const h = () => setM(mq.matches); if (mq.addEventListener) mq.addEventListener('change', h); else mq.addListener(h); return () => { if (mq.removeEventListener) mq.removeEventListener('change', h); else mq.removeListener(h); }; }, []);
+            return m;
+        };
         const NotifyBar = ({ user }) => {
             const [state, setState] = useState(() => pushSupported() ? Notification.permission : 'unsupported');
             const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
@@ -1026,6 +1062,78 @@
             </div>);
         };
 
+        const MSeg = ({ items, value, onChange }) => (<div className="m-seg">{items.map(([k, l, c]) => <button key={k} type="button" onClick={() => onChange(k)} className={value === k ? 'on' : ''}>{l}{c > 0 && <span className="m-badge">{c}</span>}</button>)}</div>);
+
+        const MobileHome = ({ data, settings, go }) => {
+            const [appts, setAppts] = useState(null);
+            useEffect(() => {
+                let alive = true;
+                (async () => {
+                    try {
+                        const now = new Date(); const tmr = addDays(now, 1); const ws = [getWeekStart(now)]; if (ymd(getWeekStart(tmr)) !== ymd(ws[0])) ws.push(getWeekStart(tmr));
+                        const maps = await Promise.all(ws.map(w => fetchWeekSlotsMap(w))); const all = {}; maps.forEach(m => Object.assign(all, m)); if (alive) setAppts(all);
+                    } catch (e) { if (alive) setAppts({}); }
+                })();
+                return () => { alive = false; };
+            }, []);
+            const now = new Date(); const nowMin = now.getHours() * 60 + now.getMinutes(); const today = ymd(now); const tomorrow = ymd(addDays(now, 1));
+            const booked = (d) => ((appts || {})[d] || []).filter(s => s.isBooked);
+            const hasAssign = (d, t) => (data.assignments || []).some(a => a.id === `${d}_${t.replace(':', '')}`);
+            const todayList = booked(today);
+            const upcoming = [...todayList.filter(s => toMin(s.time) + 60 >= nowMin).map(s => ({ ...s, d: today, lab: 'היום' })), ...booked(tomorrow).map(s => ({ ...s, d: tomorrow, lab: 'מחר' }))];
+            const unassigned = upcoming.filter(s => !(s.lab === 'היום' && toMin(s.time) < nowMin) && !hasAssign(s.d, s.time));
+            const next = upcoming[0];
+            const stats = useMemo(() => monthStats(thisMonth(), data.groups, data.shifts, data.employees, data.expenses), [data.groups, data.shifts, data.employees, data.expenses]);
+            const issues = (data.issues || []).filter(i => i.status === 'pending').sort((a, b) => (a.priority === 'דחופה' ? 0 : 1) - (b.priority === 'דחופה' ? 0 : 1));
+            const pendingReq = (data.requests || []).filter(r => r.status === 'pending'); const pendingShifts = (data.shifts || []).filter(s => s.status === 'pending');
+            const resolve = async (i) => { try { await updateDoc(getDocRef('issues', i.id), { status: 'done', resolvedAt: new Date().toISOString() }); if (i.reportedBy && i.reportedBy !== 'admin') sendPush(i.reportedBy, 'התקלה טופלה', `${i.room || ''}: ${i.description || ''}`); } catch (e) { alert(e.message); } };
+            const empName = (id) => id === 'admin' ? 'מנהל' : ((data.employees || []).find(e => e.id === id) || {}).name || '';
+            const attention = [];
+            if (unassigned.length) attention.push([`${unassigned.length} תורים ללא מפעיל`, 'שייך', () => go('calendar')]);
+            if (pendingShifts.length) attention.push([`${pendingShifts.length} משמרות לאישור`, 'אשר', () => go('finance', 'pay')]);
+            if (pendingReq.length) attention.push([`${pendingReq.length} בקשות ממתינות`, 'פתח', () => go('staff', 'requests')]);
+            return (<div className="space-y-4">
+                <div><div className="m-h1">שלום, דור</div><div className="m-sub">{now.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="m-card m-stat"><span className="m-sub">תורים היום</span><b>{appts ? todayList.length : '...'}</b></div>
+                    <div className="m-card m-stat"><span className="m-sub">הכנסות החודש</span><b>₪{Math.round(stats.revenue).toLocaleString()}</b></div>
+                </div>
+                {issues.length > 0 && (<div className="m-card m-alert"><div style={{ fontWeight: 'bold', fontSize: 19 }}>תקלות פתוחות ({issues.length})</div>
+                    {issues.map(i => (<div key={i.id} className="m-row"><span>{i.description}<div className="m-sub">{i.room} · {i.reportedByName || ''}{i.priority === 'דחופה' ? ' · דחופה' : ''}</div></span><button type="button" className="m-btn" onClick={() => resolve(i)}>טופל</button></div>))}</div>)}
+                <div className="m-card"><div style={{ fontWeight: 'bold', fontSize: 19 }}>דורש טיפול</div>
+                    {attention.length === 0 && <div className="m-sub" style={{ paddingTop: 10 }}>הכל מסודר. אין משהו שמחכה לך.</div>}
+                    {attention.map(([t, b, f]) => (<div key={t} className="m-row"><span>{t}</span><button type="button" className="m-btn" onClick={f}>{b}</button></div>))}</div>
+                {next && (<div className="m-card"><div className="m-sub">התור הבא</div><div style={{ fontSize: 24, fontWeight: 'bold', margin: '4px 0' }}>{next.lab} {next.time}</div><div>{next.customerName || 'לקוח'}{next.participants ? ` · ${next.participants} שחקנים` : ''}</div><div className="m-sub">{hasAssign(next.d, next.time) ? 'מפעיל: ' + empName(((data.assignments || []).find(a => a.id === `${next.d}_${next.time.replace(':', '')}`) || {}).employeeId) : 'טרם שויך מפעיל'}</div></div>)}
+                <button type="button" className="m-wide" onClick={() => go('issues')}>כל התקלות ודיווח תקלה</button>
+            </div>);
+        };
+
+        const MobileAdmin = ({ data, settings, onLogout }) => {
+            const [tab, setTab] = useState(() => (takePendingTab() ? 'calendar' : 'home'));
+            const [fin, setFin] = useState('income'); const [staff, setStaff] = useState('team');
+            useEffect(() => { const h = () => { if (takePendingTab()) setTab('calendar'); }; window.addEventListener('groom-open-tab', h); return () => window.removeEventListener('groom-open-tab', h); }, []);
+            const go = (t, sub) => { setTab(t); if (t === 'finance' && sub) setFin(sub); if (t === 'staff' && sub) setStaff(sub); window.scrollTo(0, 0); };
+            const pendingReq = (data.requests || []).filter(r => r.status === 'pending'); const pendingShifts = (data.shifts || []).filter(s => s.status === 'pending'); const pendingIssues = (data.issues || []).filter(i => i.status === 'pending');
+            const nav = [['home', 'בית', Home, pendingIssues.length], ['calendar', 'יומן', Calendar, 0], ['finance', 'כספים', Coins, pendingShifts.length], ['staff', 'עובדים', Users, pendingReq.length], ['more', 'עוד', Menu, 0]];
+            const titles = { home: '', calendar: 'יומן', finance: 'כספים', staff: 'עובדים', issues: 'תקלות', more: 'עוד' };
+            return (<div>
+                {titles[tab] && <div className="m-h1" style={{ marginBottom: 14 }}>{titles[tab]}</div>}
+                {tab === 'home' && <MobileHome data={data} settings={settings} go={go} />}
+                {tab === 'calendar' && <AdminConstraints employees={data.employees || []} constraints={data.constraints || []} settings={settings} assignments={data.assignments || []} />}
+                {tab === 'finance' && (<div><MSeg items={[['income', 'הכנסות'], ['report', 'דוח והוצאות'], ['pay', 'שכר', pendingShifts.length]]} value={fin} onChange={setFin} />
+                    {fin === 'income' && <AdminGroups groups={data.groups || []} employees={data.employees || []} settings={settings} shifts={data.shifts || []} />}
+                    {fin === 'report' && <AdminExpenses expenses={data.expenses || []} groups={data.groups || []} shifts={data.shifts || []} employees={data.employees || []} settings={settings} />}
+                    {fin === 'pay' && <AdminReports employees={data.employees || []} shifts={data.shifts || []} settings={settings} />}</div>)}
+                {tab === 'staff' && (<div><MSeg items={[['team', 'צוות'], ['tasks', 'משימות'], ['requests', 'בקשות', pendingReq.length]]} value={staff} onChange={setStaff} />
+                    {staff === 'team' && (<div className="space-y-3"><div className="grid grid-cols-2 gap-3"><button type="button" className="m-wide" onClick={() => go('calendar')}>זמינות עובדים</button><button type="button" className="m-wide" onClick={() => go('finance', 'pay')}>שכר עובדים</button></div><AdminEmployees employees={data.employees || []} /></div>)}
+                    {staff === 'tasks' && <AdminTasks employees={data.employees || []} tasks={data.tasks || []} />}
+                    {staff === 'requests' && <AdminRequests requests={pendingReq} employees={data.employees || []} />}</div>)}
+                {tab === 'issues' && (<div className="space-y-3"><button type="button" className="m-wide" onClick={() => go('home')}>חזרה לבית</button><AdminIssues issues={data.issues || []} employees={data.employees || []} settings={settings} /></div>)}
+                {tab === 'more' && (<div className="space-y-4"><AdminSettings settings={settings} /><button type="button" className="m-wide" style={{ background: 'rgba(239,68,68,0.4)' }} onClick={onLogout}>יציאה</button></div>)}
+                <div className="m-nav">{nav.map(([k, l, I, c]) => (<button key={k} type="button" className={tab === k || (k === 'home' && tab === 'issues') ? 'on' : ''} onClick={() => go(k)}><I size={24} />{l}{c > 0 && <span className="m-badge">{c}</span>}</button>))}</div>
+            </div>);
+        };
+
         function GRoomApp() {
             const [user, setUser] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
@@ -1034,6 +1142,8 @@
             const [loading, setLoading] = useState(true);
             const [login, setLogin] = useState({ code: '', empId: '' });
             const [dbConn, setDbConn] = useState(false);
+            const isMobile = useIsMobile();
+            useEffect(() => { document.documentElement.classList.toggle('mglass', isMobile); }, [isMobile]);
 
             useEffect(() => {
                 const init = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
@@ -1103,6 +1213,12 @@
                         </div>
                         <div className="mt-6 text-[10px] opacity-40 text-dynamic">גרסה 8.4 - עיגול מחירים, וואטסאפ והזמנה חכמה</div>
                     </div>
+                </div>
+            );
+
+            if (isMobile && currentUser.role === 'admin') return (
+                <div className="min-h-screen font-sans">
+                    <main className="px-3 py-4 w-full"><NotifyBar user={currentUser} /><MobileAdmin data={data} settings={settings} onLogout={() => { detachPush(); setCurrentUser(null); setLogin({ code: '', empId: '' }); }} /></main>
                 </div>
             );
 
