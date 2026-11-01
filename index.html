@@ -62,6 +62,8 @@
         .m-seg { display: flex; gap: 4px; padding: 5px; border-radius: 28px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); margin-bottom: 14px; }
         .m-seg button { flex: 1; min-height: 50px; border-radius: 24px; background: transparent; color: rgba(255,255,255,0.8); font-size: 16px !important; }
         .m-seg button.on { background: rgba(255,255,255,0.22); color: #fff; border: 1px solid rgba(255,255,255,0.3); }
+        .m-seg.slim { padding: 3px; gap: 3px; border-radius: 999px; margin-bottom: 8px; }
+        html.mglass .m-seg.slim button, .m-seg.slim button { min-height: 32px !important; height: 32px; padding: 0 12px !important; font-size: 14px !important; font-weight: 600; border-radius: 999px !important; line-height: 1; }
         .m-card { background: rgba(255,255,255,0.09); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255,255,255,0.18); box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.3); border-radius: 24px; padding: 16px; }
         .m-alert { background: rgba(248,113,113,0.16); border-color: rgba(248,113,113,0.45); }
         .m-h1 { font-size: 28px; font-weight: bold; } .m-sub { font-size: 16px; color: rgba(255,255,255,0.7); }
@@ -874,7 +876,7 @@
                 <div className="space-y-6 relative">
                     <Card title="יומן זמינות והזמנות (נבנה לפי הזמינות שהעובדים מסמנים)">
                         <div className={`flex flex-col ${mob ? '' : 'md:flex-row'} justify-between items-center mb-3 gap-3`}>
-                            {mob && <div className="w-full"><MSeg items={[['day', 'יום'], ['week', 'שבוע']]} value={mode} onChange={setViewSel} /></div>}
+                            {mob && <div className="w-full"><MSeg slim items={[['day', 'יום'], ['week', 'שבוע']]} value={mode} onChange={setViewSel} /></div>}
                             {mode === 'day' && (<div className="flex items-center justify-between gap-2 w-full"><button type="button" className="chip-btn chip-icon" aria-label="יום קודם" onClick={() => moveDay(-1)}><ChevronRight size={20}/></button><div className="text-center"><div className="font-bold text-lg">{`יום ${DAY_NAMES_HE[selDay.getDay()]}, ${selDay.getDate()}/${selDay.getMonth() + 1}`}</div>{ymd(selDay) !== todayStr && <button type="button" className="chip-btn" style={{ marginTop: 4 }} onClick={() => moveDay(0)}>היום</button>}</div><button type="button" className="chip-btn chip-icon" aria-label="יום הבא" onClick={() => moveDay(1)}><ChevronLeft size={20}/></button></div>)}
                             {mode === 'week' && <div className="flex items-center gap-3">
                                 <Button onClick={() => setOffset(p => p - 1)}><ChevronRight size={16}/></Button>
@@ -1243,7 +1245,7 @@
             </div>);
         };
 
-        const MSeg = ({ items, value, onChange }) => (<div className="m-seg">{items.map(([k, l, c]) => <button key={k} type="button" onClick={() => onChange(k)} className={value === k ? 'on' : ''}>{l}{c > 0 && <span className="m-badge">{c}</span>}</button>)}</div>);
+        const MSeg = ({ items, value, onChange, slim }) => (<div className={`m-seg${slim ? ' slim' : ''}`}>{items.map(([k, l, c]) => <button key={k} type="button" onClick={() => onChange(k)} className={value === k ? 'on' : ''}>{l}{c > 0 && <span className="m-badge">{c}</span>}</button>)}</div>);
 
         const MobileHome = ({ data, settings, go }) => {
             const [appts, setAppts] = useState(null);
