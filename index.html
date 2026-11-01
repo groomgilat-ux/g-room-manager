@@ -201,7 +201,23 @@
         const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
         const shiftMonth = (m, delta) => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 1 + delta, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
         const normalizePhone = (phone) => { let p = String(phone || '').replace(/\D/g, ''); if (p.startsWith('9720')) p = '972' + p.slice(4); else if (p.startsWith('0')) p = '972' + p.slice(1); return p; };
-        const buildWAUrl = (phone, empName, room, time, gender) => {
+        const isPhoneDevice = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        // בטלפון: mailto (נפתח באפליקציית המייל עם הטיוטה מוכנה); במחשב: חלון כתיבה של Gmail
+        const mailUrl = (to, subject, body) => isPhoneDevice() ? `mailto:${encodeURIComponent(to || '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}` : `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to || '')}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        const openMail = (url) => { if (/^mailto:/.test(url)) window.location.href = url; else window.open(url, '_blank'); };
+        const WA_TEMPLATES = [
+            ['intro', 'היכרות', (n, role, avail, room, time) => `שלום אני ${n}, ${role} שלך בחדר בריחה ${room}, לתור שהוזמן לשעה ${time}. אם אתם לא מוצאים את המקום או צריכים עזרה אני ${avail} בשמחה :)`],
+            ['remind', 'תזכורת', (n, role, avail, room, time) => `שלום, כאן ${n} מחדר בריחה ${room}. תזכורת לתור שלכם היום בשעה ${time}. נשמח לראותכם! אם יש שינוי במספר המשתתפים או שאתם מאחרים אפשר לעדכן אותי כאן.`],
+            ['late', 'מאחרים?', (n, role, avail, room, time) => `שלום, כאן ${n} מחדר בריחה ${room}. אנחנו מחכים לכם לתור של ${time}. אם אתם בדרך או מתקשים למצוא את המקום, כתבו לי ואעזור :)`],
+            ['change', 'שינוי שעה', (n, role, avail, room, time) => `שלום, כאן ${n} מחדר בריחה ${room}. רציתי לתאם איתכם לגבי התור של ${time}. מתי נוח לכם לדבר?`],
+        ];
+        const buildWAUrl = (phone, empName, room, time, gender, tplKey) => {
+            const role = gender === 'male' ? 'המפעיל' : (gender === 'female' ? 'המפעילה' : 'המפעיל/ה');
+            const avail = gender === 'male' ? 'זמין' : (gender === 'female' ? 'זמינה' : 'זמין/ה');
+            const tpl = (WA_TEMPLATES.find(t => t[0] === tplKey) || WA_TEMPLATES[0])[2];
+            return `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(tpl(empName, role, avail, room, time))}`;
+        };
+        const buildWAUrlOld = (phone, empName, room, time, gender) => {
             const role = gender === 'male' ? 'המפעיל' : (gender === 'female' ? 'המפעילה' : 'המפעיל/ה');
             const avail = gender === 'male' ? 'זמין' : (gender === 'female' ? 'זמינה' : 'זמין/ה');
             return `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(`שלום אני ${empName}, ${role} שלך בחדר בריחה ${room}, לתור שהוזמן לשעה ${time}. אם אתם לא מוצאים את המקום או צריכים עזרה אני ${avail} בשמחה :)`)}`;
@@ -244,7 +260,7 @@
             return merged;
         };
         // תור ב-T דורש עובד פנוי מ-T-15 ועד T+60+15
-        const durOf = (slot) => { const to = slot && (slot.slotTo || slot.to); if (!to || !slot.time) return SLOT_MIN; const d = toMin(to) - toMin(slot.time); return (d > 0 && d <= 600) ? d : SLOT_MIN; };
+        const durOf = (slot) => { let to = slot && (slot.slotTo || slot.to); if (!to || !slot.time) return SLOT_MIN; to = String(to); if (/^\d{12}$/.test(to)) to = `${to.slice(8, 10)}:${to.slice(10, 12)}`; let d = toMin(to) - toMin(slot.time); if (d <= 0) d += 1440; return (d > 0 && d <= 600) ? d : SLOT_MIN; };
         const coveringEmployees = (constraints, employees, dStr, time, dur) => {
             const s = toMin(time) - PRE_MIN; const e = toMin(time) + (dur || SLOT_MIN);
             return (employees || []).filter(emp => getAvailRanges(constraints, emp.id, dStr).some(r => r.s <= s && r.e >= e));
@@ -331,6 +347,19 @@
 
 
         const WAIcon = ({ size = 20 }) => (<svg width={size} height={size} viewBox="110 90 300 310" aria-hidden="true" style={{ flexShrink: 0 }}><defs><linearGradient id="waGrad" x1="253.32" y1="101.31" x2="253.32" y2="347.42" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#4ac14b"/><stop offset="1" stopColor="#06853a"/></linearGradient></defs><path fill="url(#waGrad)" fillRule="evenodd" d="M253.33,101.31c-68.4,0-124.02,55.2-124.02,123.06,0,26.91,8.77,51.86,23.62,72.15l-15.49,45.69,47.65-15.14c19.58,12.85,43.03,20.34,68.24,20.34,68.37,0,124.01-55.2,124.01-123.05s-55.64-123.06-124.01-123.06h0Z"/><path fill="#fff" fillRule="evenodd" d="M393.13,223.32c0,77-62.92,139.44-140.53,139.44-24.65,0-47.8-6.29-67.93-17.35l-77.81,24.73,25.36-74.81c-12.8-21.02-20.16-45.66-20.16-72,0-77.02,62.92-139.45,140.54-139.45s140.53,62.43,140.53,139.45h0ZM252.61,106.08c-65.17,0-118.16,52.59-118.16,117.24,0,25.64,8.35,49.4,22.5,68.74l-14.75,43.53,45.4-14.42c18.65,12.24,41,19.38,65.01,19.38,65.14,0,118.15-52.59,118.15-117.23s-53.01-117.24-118.15-117.24h0ZM323.57,255.44c-.87-1.43-3.17-2.28-6.6-3.99-3.45-1.71-20.39-9.98-23.55-11.12-3.15-1.14-5.47-1.71-7.75,1.71-2.3,3.42-8.9,11.12-10.92,13.4-2,2.29-4.01,2.56-7.45.85-3.45-1.71-14.56-5.33-27.71-16.96-10.23-9.07-17.15-20.25-19.17-23.67-2-3.42-.2-5.26,1.51-6.97,1.55-1.54,3.45-3.99,5.17-5.98,1.73-2,2.3-3.44,3.45-5.72,1.15-2.28.58-4.27-.29-5.98-.85-1.71-7.75-18.53-10.62-25.38-2.85-6.83-5.73-6.58-7.75-6.58s-5.72.6-5.72.6c0,0-6.91.85-10.06,4.27-3.15,3.42-12.05,11.69-12.05,28.5s12.33,33.08,14.06,35.35c1.73,2.29,23.82,37.93,58.85,51.61,35.02,13.68,35.02,9.12,41.34,8.54,6.31-.56,20.38-8.26,23.25-16.25,2.87-7.98,2.87-14.83,2.02-16.25h0ZM323.57,255.44"/></svg>);
+        // בחירת נוסח לוואטסאפ + סימון "נשלחה הודעה" (נשמר ב-wa_sent כדי שלא ישלחו פעמיים)
+        const WAMenu = ({ id, phone, empName, room, time, gender, onSent }) => {
+            const [sent, setSent] = useState(null);
+            useEffect(() => { if (!id) return; return onSnapshot(getDocRef('wa_sent', id), d => setSent(d.exists() ? d.data() : null), () => {}); }, [id]);
+            const go = async (key) => {
+                if (!phone) return alert('אין טלפון ללקוח זה');
+                window.open(buildWAUrl(phone, empName, room, time, gender, key), '_blank');
+                try { await setDoc(getDocRef('wa_sent', id), { at: new Date().toISOString(), by: empName, tpl: key }); } catch (e) {}
+                if (onSent) onSent();
+            };
+            return (<div className="space-y-2"><div className="flex flex-wrap gap-2">{WA_TEMPLATES.map(([k, l]) => <button key={k} type="button" className="chip-btn" onClick={() => go(k)}><WAIcon size={16}/>&nbsp;{l}</button>)}</div>
+                {sent && <div className="text-xs text-green-300">✓ נשלחה הודעה {new Date(sent.at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} {new Date(sent.at).toLocaleDateString('he-IL') !== new Date().toLocaleDateString('he-IL') ? new Date(sent.at).toLocaleDateString('he-IL') : ''}{sent.by ? ` · ${sent.by}` : ''}</div>}</div>);
+        };
         const MonthNav = ({ month, setMonth }) => (<div className="flex flex-col items-start gap-1"><div className="flex items-center gap-1"><button type="button" title="חודש קודם" onClick={() => setMonth(shiftMonth(month, -1))} className="bg-gray-800 border border-gray-700 rounded p-2 text-white hover:bg-gray-700"><ChevronRight size={16}/></button><input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/><button type="button" title="חודש הבא" onClick={() => setMonth(shiftMonth(month, 1))} className="bg-gray-800 border border-gray-700 rounded p-2 text-white hover:bg-gray-700"><ChevronLeft size={16}/></button></div>{month !== thisMonth() && <button type="button" onClick={() => setMonth(thisMonth())} className="chip-btn">החודש</button>}</div>);
         const Button = ({ children, onClick, variant='primary', className='', disabled, ...props }) => { const v = { primary: "bg-indigo-600 hover:bg-indigo-700 text-white", secondary: "bg-gray-700 hover:bg-gray-600 text-white", danger: "bg-red-600 hover:bg-red-700 text-white", success: "bg-green-600 hover:bg-green-700 text-white", outline: "border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20" }; return <button onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>; };
         const Card = ({ title, children, className='' }) => (<div className={`card-bg rounded-xl p-6 shadow-xl ${className}`}>{title && <h3 className="text-xl font-bold text-dynamic mb-4 border-b border-gray-700 pb-2">{title}</h3>}<div className="text-dynamic">{children}</div></div>);
@@ -544,7 +573,7 @@
                 {showWA && (<div className="bg-gray-800 border border-gray-700 rounded-lg p-3 mb-3 space-y-2">
                     <label className="text-sm opacity-80">מי מנהל המערכת כרגע?</label>
                     <input type="text" value={adminName} onChange={e => setAdminName(e.target.value)} placeholder="למשל: דור" className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-indigo-500"/>
-                    <Button variant="secondary" onClick={sendWA} className="w-full"><WAIcon size={22}/> שלח הודעה ללקוח</Button>
+                    <WAMenu id={assignId} phone={slotData.customerPhone} empName={adminName.trim() || 'מנהל המערכת'} room={roomName} time={slotData.time} gender="male" onSent={() => { const n = adminName.trim(); if (n) { try { localStorage.setItem('groom_admin_name', n); } catch (e) {} } }} />
                 </div>)}
                 <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-3" value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)}><option value="">-- ללא שיוך --</option><option value="admin">מנהל מערכת</option>{(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
                 <div className="flex gap-2"><Button variant="secondary" onClick={onClose} className="flex-1">סגור</Button><Button onClick={handleAssign} disabled={saving} className="flex-1">{saving ? 'שומר...' : 'שמור שיוך'}</Button></div>
@@ -631,12 +660,8 @@
             const todayStr = new Date().toISOString().slice(0, 10);
             const myAssignments = (assignments||[]).filter(a => a.employeeId === employee.id && (a.date||'') >= todayStr).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
             const roomName = (settings?.roomsList || 'סודו של הודיני').split(',')[0].trim();
-            const handleWA = (phone, time, room) => {
-                if(!phone) return alert('אין טלפון ללקוח זה');
-                const empName = employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name;
-                window.open(buildWAUrl(phone, empName, room || roomName, time, employee.role === 'admin' ? 'male' : employee.gender), '_blank');
-            };
-            return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="secondary" onClick={()=>handleWA(a.customerPhone, a.time, a.room)} className="rounded-full w-12 h-12 p-0"><WAIcon size={30}/></Button></div>))}</div></Card>);
+            const [waOpen, setWaOpen] = useState(null);
+            return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700"><div className="flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="secondary" onClick={()=>setWaOpen(w => w === a.id ? null : a.id)} className="rounded-full w-12 h-12 p-0"><WAIcon size={30}/></Button></div>{waOpen === a.id && <div className="mt-3"><WAMenu id={a.id} phone={a.customerPhone} empName={employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name} room={a.room || roomName} time={a.time} gender={employee.role === 'admin' ? 'male' : employee.gender} /></div>}</div>))}</div></Card>);
         };
         const EmployeeHistory = ({ employee, groups, shifts }) => {
             const [month, setMonth] = useState(thisMonth());
@@ -948,7 +973,7 @@
             const busiest = [...counts].sort((a, b) => b.n - a.n).filter(c => c.n > 0).slice(0, 3); const emptiest = [...counts].sort((a, b) => a.n - b.n).slice(0, 3);
             const summaryText = () => `סיכום חודשי ${month} - ${settings.businessName || 'G-Room'}\n\nהכנסות: ₪${fmt(cur.revenue)}\nשכר עובדים: ₪${fmt(cur.salaries)}\nהוצאות: ₪${fmt(cur.expensesTotal)}\nרווח: ₪${fmt(cur.profit)}\n\nקבוצות: ${cur.count} (חודש קודם: ${prev.count})\nממוצע שחקנים לקבוצה: ${cur.avgPlayers.toFixed(1)}\nהנחות: ילדים ${cur.kids}, סטודנט/חייל/נכה ${cur.elig}, סה"כ הנחה ${cur.discPct.toFixed(1)}% (₪${fmt(cur.discAmt)})\nשעות עמוסות: ${busiest.map(b => `${b.t} (${b.n})`).join(', ') || '-'}\nשעות חלשות: ${emptiest.map(b => `${b.t} (${b.n})`).join(', ')}`;
             const saveEmail = async () => { try { await setDoc(getDocRef('app_settings', 'global'), { ...settings, reportEmail: email.trim() }, { merge: true }); } catch (e) {} };
-            const sendMail = () => { saveEmail(); window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email.trim())}&su=${encodeURIComponent('סיכום חודשי ' + month)}&body=${encodeURIComponent(summaryText())}`, '_blank'); };
+            const sendMail = () => { saveEmail(); openMail(mailUrl(email.trim(), 'סיכום חודשי ' + month, summaryText())); };
             const exportXlsx = async () => {
                 setBusy(true);
                 try {
@@ -1034,7 +1059,7 @@
             const getMailLink = (emp) => {
                 const tpl = settings.emailTemplate || INITIAL_SETTINGS.emailTemplate;
                 const vars = { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] };
-                return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(emp.email || '')}&su=${encodeURIComponent(replacePlaceholders(tpl.subject, vars))}&body=${encodeURIComponent(replacePlaceholders(tpl.body, vars))}`;
+                return mailUrl(emp.email || '', replacePlaceholders(tpl.subject, vars), replacePlaceholders(tpl.body, vars));
             };
             const handleShiftStatus = async (id, newStatus) => { await updateDoc(getDocRef('shifts', id), { status: newStatus, approved: newStatus === 'approved' }); };
 
@@ -1220,9 +1245,18 @@
             const resolve = async (i) => { try { await updateDoc(getDocRef('issues', i.id), { status: 'done', resolvedAt: new Date().toISOString() }); if (i.reportedBy && i.reportedBy !== 'admin') sendPush(i.reportedBy, 'התקלה טופלה', `${i.room || ''}: ${i.description || ''}`); } catch (e) { alert(e.message); } };
             const empName = (id) => id === 'admin' ? 'מנהל' : ((data.employees || []).find(e => e.id === id) || {}).name || '';
             const attention = [];
-            if (unassigned.length) attention.push([`${unassigned.length} תורים ללא מפעיל`, 'שייך', () => go('calendar')]);
             if (pendingShifts.length) attention.push([`${pendingShifts.length} משמרות לאישור`, 'אשר', () => go('finance', 'pay')]);
             if (pendingReq.length) attention.push([`${pendingReq.length} בקשות ממתינות`, 'פתח', () => go('staff', 'requests')]);
+            const [assigning, setAssigning] = useState('');
+            const availCons = (data.constraints || []).filter(c => c.type === 'available');
+            const room = ((settings && settings.roomsList) || 'סודו של הודיני').split(',')[0].trim();
+            const quickAssign = async (sl, empId) => {
+                const id = `${sl.d}_${sl.time.replace(':', '')}`; setAssigning(id + empId);
+                try {
+                    await setDoc(getDocRef('assignments', id), { date: sl.d, time: sl.time, customerName: sl.customerName || '', customerPhone: sl.customerPhone || '', players: Number(sl.participants) || null, employeeId: empId, room });
+                    if (empId !== 'admin') sendPush(empId, 'שויך אליך תור', `${formatDateIL(sl.d)} בשעה ${sl.time}${sl.customerName ? ' · ' + sl.customerName : ''}`);
+                } catch (e) { alert(e.message); } finally { setAssigning(''); }
+            };
             return (<div className="space-y-4">
                 <div><div className="m-h1">שלום, דור</div><div className="m-sub">{now.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1231,6 +1265,14 @@
                 </div>
                 {issues.length > 0 && (<div className="m-card m-alert"><div style={{ fontWeight: 'bold', fontSize: 19 }}>תקלות פתוחות ({issues.length})</div>
                     {issues.map(i => (<div key={i.id} className="m-row"><span>{i.description}<div className="m-sub">{i.room} · {i.reportedByName || ''}{i.priority === 'דחופה' ? ' · דחופה' : ''}</div></span><button type="button" className="m-btn" onClick={() => resolve(i)}>טופל</button></div>))}</div>)}
+                {unassigned.length > 0 && (<div className="m-card"><div style={{ fontWeight: 'bold', fontSize: 19 }}>תורים ללא מפעיל ({unassigned.length})</div>
+                    {unassigned.slice(0, 6).map(sl => { const free = coveringEmployees(availCons, data.employees || [], sl.d, sl.time, durOf(sl)); return (<div key={sl.d + sl.time} className="m-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span><b>{sl.lab} {sl.time}</b> · {sl.customerName || 'לקוח'}</span><span className="m-sub">{sl.participants ? sl.participants + ' שחקנים' : ''}</span></div>
+                        <div className="flex flex-wrap gap-2">{free.map(e => <button key={e.id} type="button" className="chip-btn" disabled={!!assigning} onClick={() => quickAssign(sl, e.id)}>{assigning === `${sl.d}_${sl.time.replace(':', '')}${e.id}` ? '...' : e.name}</button>)}
+                            <button type="button" className="chip-btn" disabled={!!assigning} onClick={() => quickAssign(sl, 'admin')}>אני</button>
+                            {free.length === 0 && <span className="m-sub">אין עובד שסימן זמינות</span>}</div></div>); })}
+                    {unassigned.length > 6 && <button type="button" className="m-wide" style={{ marginTop: 10 }} onClick={() => go('calendar')}>עוד {unassigned.length - 6} ביומן</button>}
+                </div>)}
                 <div className="m-card"><div style={{ fontWeight: 'bold', fontSize: 19 }}>דורש טיפול</div>
                     {attention.length === 0 && <div className="m-sub" style={{ paddingTop: 10 }}>הכל מסודר. אין משהו שמחכה לך.</div>}
                     {attention.map(([t, b, f]) => (<div key={t} className="m-row"><span>{t}</span><button type="button" className="m-btn" onClick={f}>{b}</button></div>))}</div>
