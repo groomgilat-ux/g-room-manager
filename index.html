@@ -16,6 +16,7 @@
     {
       "imports": {
         "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
         "lucide-react": "https://esm.sh/lucide-react@0.292.0",
         "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
@@ -143,6 +144,9 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
+        import { createPortal } from 'react-dom';
+        // חלון שנפתח מתוך חלון אחר (מוצג על ה-body כדי שאפקט הזכוכית של ההורה לא יצמצם אותו)
+        const Portal = ({ children }) => createPortal(children, document.body);
         import { User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History, MessageCircle, Home, Menu } from 'lucide-react';
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -578,7 +582,7 @@
                 <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-3" value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)}><option value="">-- ללא שיוך --</option><option value="admin">מנהל מערכת</option>{(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
                 <div className="flex gap-2"><Button variant="secondary" onClick={onClose} className="flex-1">סגור</Button><Button onClick={handleAssign} disabled={saving} className="flex-1">{saving ? 'שומר...' : 'שמור שיוך'}</Button></div>
                 <Button variant="danger" onClick={handleCancelAppt} disabled={saving} className="w-full mt-3"><Trash2 size={16}/> בטל תור (מחיקה מ-Tor4You)</Button>
-                {showEdit && <EditAppointmentModal slotData={slotData} onClose={() => setShowEdit(false)} onDone={() => { setShowEdit(false); if (onRefresh) onRefresh(); onClose(); }} />}
+                {showEdit && <Portal><EditAppointmentModal slotData={slotData} onClose={() => setShowEdit(false)} onDone={() => { setShowEdit(false); if (onRefresh) onRefresh(); onClose(); }} /></Portal>}
             </div></div>);
         };
 
