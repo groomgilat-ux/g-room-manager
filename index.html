@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="G-Room">
-    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-192.png"><link rel="icon" type="image/png" href="/icon-192.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
@@ -1241,7 +1241,7 @@
                     <div className="max-w-md w-full card-bg p-8 rounded-2xl text-center relative shadow-2xl">
                         <div className={`absolute top-4 right-4 w-3 h-3 rounded-full ${dbConn ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></div>
                         <div className="mb-8">
-                            {settings.logo ? <img src={settings.logo} className="h-24 mx-auto mb-4 object-contain"/> : <div className="h-24 w-24 bg-indigo-900/50 rounded-full mx-auto flex items-center justify-center mb-4"><Lock size={40} className="text-indigo-400"/></div>}
+                            <img src="/logo.svg" alt="G-Room" className="h-24 mx-auto mb-4 object-contain"/>
                             <h1 className="text-3xl font-bold text-dynamic">{settings.businessName}</h1>
                             <p className="opacity-60 text-sm mt-2">מערכת ניהול ERP</p>
                         </div>
@@ -1269,7 +1269,7 @@
                 <div className="min-h-screen font-sans flex flex-col">
                     <header className="card-bg border-b border-dynamic sticky top-0 z-50 h-16 flex items-center justify-between px-6 shadow-sm">
                         <div className="flex items-center gap-3">
-                            {settings.logo && <img src={settings.logo} className="h-8 w-8 rounded object-cover"/>}
+                            <img src="/logo.svg" alt="G-Room" className="h-8 w-auto object-contain"/>
                             <span className="font-bold text-xl text-dynamic hidden sm:block">{settings.businessName}</span>
                             <span className="text-xs bg-indigo-900/50 text-indigo-200 px-3 py-1 rounded-full border border-indigo-500/30 flex items-center gap-2">
                                 {currentUser.role === 'admin' ? 'מנהל מערכת' : `שלום, ${currentUser.name}`}
