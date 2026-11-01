@@ -870,7 +870,7 @@
                 <div className="space-y-6 relative">
                     <Card title="יומן זמינות והזמנות (נבנה לפי הזמינות שהעובדים מסמנים)">
                         <div className="flex flex-col md:flex-row justify-between items-center mb-3 gap-3">
-                            {mob && <MSeg items={[['day', 'יום'], ['week', 'שבוע']]} value={mode} onChange={setViewSel} />}
+                            {mob && <div className="w-full"><MSeg items={[['day', 'יום'], ['week', 'שבוע']]} value={mode} onChange={setViewSel} /></div>}
                             {mode === 'day' && (<div className="flex items-center justify-between gap-2 w-full"><button type="button" className="chip-btn chip-icon" aria-label="יום קודם" onClick={() => moveDay(-1)}><ChevronRight size={20}/></button><div className="text-center"><div className="font-bold text-lg">{`יום ${DAY_NAMES_HE[selDay.getDay()]}, ${selDay.getDate()}/${selDay.getMonth() + 1}`}</div>{ymd(selDay) !== todayStr && <button type="button" className="chip-btn" style={{ marginTop: 4 }} onClick={() => moveDay(0)}>היום</button>}</div><button type="button" className="chip-btn chip-icon" aria-label="יום הבא" onClick={() => moveDay(1)}><ChevronLeft size={20}/></button></div>)}
                             {mode === 'week' && <div className="flex items-center gap-3">
                                 <Button onClick={() => setOffset(p => p - 1)}><ChevronRight size={16}/></Button>
