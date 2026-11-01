@@ -79,9 +79,11 @@
         // ====== Calendar / availability engine ======
         const TOR4YOU_ADD_SLOTS_URL = `${API_URL}/addTor4YouSlots`;
         const TOR4YOU_DELETE_APPT_URL = `${API_URL}/deleteTor4YouAppointment`;
+        const TOR4YOU_UPDATE_APPT_URL = `${API_URL}/updateTor4YouAppointment`;
         const DAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const DAY_NAMES_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
         const SLOT_MIN = 60;   // אורך התור
+        const DOUBLE_MIN = 150; // תור כפול: שני סבבים ברצף עם מרווח של חצי שעה
         const PRE_MIN = 15;    // העובד מגיע 15 דק' לפני
         const POST_MIN = 15;   // וסוגר את החדר 15 דק' אחרי
         const STEP_MIN = 90;   // מרווח בין תורים (שעה + חצי שעה)
@@ -110,8 +112,9 @@
             return merged;
         };
         // תור ב-T דורש עובד פנוי מ-T-15 ועד T+60+15
-        const coveringEmployees = (constraints, employees, dStr, time) => {
-            const s = toMin(time) - PRE_MIN; const e = toMin(time) + SLOT_MIN + POST_MIN;
+        const durOf = (slot) => { const to = slot && (slot.slotTo || slot.to); if (!to || !slot.time) return SLOT_MIN; const d = toMin(to) - toMin(slot.time); return (d > 0 && d <= 600) ? d : SLOT_MIN; };
+        const coveringEmployees = (constraints, employees, dStr, time, dur) => {
+            const s = toMin(time) - PRE_MIN; const e = toMin(time) + (dur || SLOT_MIN) + POST_MIN;
             return (employees || []).filter(emp => getAvailRanges(constraints, emp.id, dStr).some(r => r.s <= s && r.e >= e));
         };
         const fetchWeekSlotsMap = async (weekStart) => {
@@ -128,10 +131,11 @@
                 const existing = slotsMap[dStr] || []; const have = new Set(existing.map(s => s.time));
                 candidateTimes(d, settings.openingHours).forEach(t => {
                     if (have.has(t)) return; if (dStr === todayStr && toMin(t) <= nowMin) return;
+                    if (existing.some(s => toMin(s.time) < toMin(t) + SLOT_MIN && toMin(s.time) + durOf(s) > toMin(t))) return; // חופף למועד קיים (למשל תור כפול)
                     if (coveringEmployees(constraints, employees, dStr, t).length > 0) toAdd.push({ date: dStr, time: t });
                 });
                 existing.forEach(s => {
-                    if (coveringEmployees(constraints, employees, dStr, s.time).length > 0) return;
+                    if (coveringEmployees(constraints, employees, dStr, s.time, durOf(s)).length > 0) return;
                     if (s.isBooked || s.customerName || Number(s.participants) > 0) { warnings.push({ date: dStr, time: s.time, customerName: s.customerName }); return; }
                     if (!s.id || !s.vfib) return; if (dStr === todayStr && toMin(s.time) <= nowMin) return;
                     toRemove.push({ slotid: s.id, vfib: s.vfib, date: dStr, time: s.time });
@@ -166,7 +170,7 @@
         const describeSync = (r) => { const parts = []; if (r.added) parts.push(`נפתחו ${r.added} תורים חדשים ללקוחות`); if (r.removed) parts.push(`נסגרו ${r.removed} תורים פנויים ללא עובד`); if (!parts.length) parts.push('היומן כבר מסונכרן עם הזמינות'); return parts.join(' · ') + (r.errors && r.errors.length ? ` · ⚠️ ${r.errors.length} תקלות` : ''); };
 
 
-        const MonthNav = ({ month, setMonth }) => (<div className="flex items-center gap-1"><button type="button" title="חודש קודם" onClick={() => setMonth(shiftMonth(month, -1))} className="bg-gray-800 border border-gray-700 rounded p-2 text-white hover:bg-gray-700"><ChevronRight size={16}/></button><input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/><button type="button" title="חודש הבא" onClick={() => setMonth(shiftMonth(month, 1))} className="bg-gray-800 border border-gray-700 rounded p-2 text-white hover:bg-gray-700"><ChevronLeft size={16}/></button>{month !== thisMonth() && <button type="button" onClick={() => setMonth(thisMonth())} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded px-2 py-2">החודש</button>}</div>);
+        const MonthNav = ({ month, setMonth }) => (<div className="flex flex-col items-start gap-1"><div className="flex items-center gap-1"><button type="button" title="חודש קודם" onClick={() => setMonth(shiftMonth(month, -1))} className="bg-gray-800 border border-gray-700 rounded p-2 text-white hover:bg-gray-700"><ChevronRight size={16}/></button><input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} className="bg-gray-800 border border-gray-700 rounded p-2 text-white"/><button type="button" title="חודש הבא" onClick={() => setMonth(shiftMonth(month, 1))} className="bg-gray-800 border border-gray-700 rounded p-2 text-white hover:bg-gray-700"><ChevronLeft size={16}/></button></div>{month !== thisMonth() && <button type="button" onClick={() => setMonth(thisMonth())} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] leading-none rounded px-2 py-1">החודש</button>}</div>);
         const Button = ({ children, onClick, variant='primary', className='', disabled, ...props }) => { const v = { primary: "bg-indigo-600 hover:bg-indigo-700 text-white", secondary: "bg-gray-700 hover:bg-gray-600 text-white", danger: "bg-red-600 hover:bg-red-700 text-white", success: "bg-green-600 hover:bg-green-700 text-white", outline: "border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20" }; return <button onClick={onClick} className={`px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${v[variant]} ${className}`} disabled={disabled} {...props}>{children}</button>; };
         const Card = ({ title, children, className='' }) => (<div className={`card-bg rounded-xl p-6 shadow-xl ${className}`}>{title && <h3 className="text-xl font-bold text-dynamic mb-4 border-b border-gray-700 pb-2">{title}</h3>}<div className="text-dynamic">{children}</div></div>);
         const Input = ({ label, type="text", value, onChange, className="", ...props }) => (<div className={`flex flex-col gap-1 ${className}`}>{label && <label className="text-sm opacity-70 font-medium text-dynamic">{label}</label>}<input type={type} value={value} onChange={onChange} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors" {...props} /></div>);
@@ -176,35 +180,46 @@
         const AddAppointmentModal = ({ slotData, onClose, onRefresh, employees, settings, constraints, slotsMap, isNew }) => {
             const [dateStr, setDateStr] = useState((slotData && slotData.dateStr) || ymd(new Date())); const [time, setTime] = useState((slotData && slotData.time) || '12:00');
             const [first, setFirst] = useState(''); const [last, setLast] = useState(''); const [cell, setCell] = useState(''); const [email, setEmail] = useState(''); const [parts, setParts] = useState(2); const [saving, setSaving] = useState(false); const [selectedEmp, setSelectedEmp] = useState('');
+            const [double, setDouble] = useState(!!(slotData && slotData.dur >= DOUBLE_MIN));
             const roomName = ((settings && settings.roomsList) || 'סודו של הודיני').split(',')[0].trim();
             const dateObj = new Date(dateStr + 'T12:00:00');
-            const covered = new Set(coveringEmployees(constraints, employees, dateStr, time).map(e => e.id));
-            const sortedEmps = [...(employees || [])].sort((a, b) => (covered.has(b.id) ? 1 : 0) - (covered.has(a.id) ? 1 : 0));
             const existingSlot = isNew ? ((slotsMap || {})[dateStr] || []).find(s => s.time === time) : slotData;
+            const wantDur = double ? DOUBLE_MIN : (existingSlot ? durOf(existingSlot) : SLOT_MIN);
+            const covered = new Set(coveringEmployees(constraints, employees, dateStr, time, wantDur).map(e => e.id));
+            const sortedEmps = [...(employees || [])].sort((a, b) => (covered.has(b.id) ? 1 : 0) - (covered.has(a.id) ? 1 : 0));
             const chips = isNew ? candidateTimes(dateObj, settings && settings.openingHours) : [];
             const handleAdd = async (e) => {
                 e.preventDefault(); if (saving) return; setSaving(true);
                 try {
                     let slot = existingSlot;
-                    if (isNew) {
-                        if (!dateStr || !time) { alert('יש לבחור תאריך ושעה'); return; }
-                        if (slot && slot.isBooked) { alert('כבר קיים תור שהוזמן בשעה הזו'); return; }
-                        if (!slot) {
-                            const r = await fetch(TOR4YOU_ADD_SLOTS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ date: dateStr, time }] }) });
-                            let d = {}; try { d = await r.json(); } catch (x) {}
-                            if (!d.addedCount) { alert('פתיחת המועד ב-Tor4You נכשלה: ' + (d.error || JSON.stringify(d.errors || d) || ('שגיאה ' + r.status))); return; }
-                            const map = await fetchWeekSlotsMap(getWeekStart(dateObj));
-                            slot = (map[dateStr] || []).find(s => s.time === time && !s.isBooked);
-                            if (!slot || !slot.id) { alert('המועד נפתח אבל לא הצלחתי לאתר אותו כדי להזמין. רענן את היומן ונסה להזמין שוב מהמשבצת.'); onRefresh(); return; }
+                    const needsNewSlot = (isNew && !slot) || (double && (!slot || durOf(slot) < DOUBLE_MIN));
+                    if (isNew && !dateStr) { alert('יש לבחור תאריך ושעה'); return; }
+                    if (needsNewSlot) {
+                        // בודקים מול Tor4You מה קיים בטווח, לא נוגעים בתור שכבר הוזמן, ופנויים בטווח מוחלפים במועד אחד
+                        const fresh = await fetchWeekSlotsMap(getWeekStart(dateObj));
+                        const t0 = toMin(time); const t1 = t0 + wantDur;
+                        const overlaps = (fresh[dateStr] || []).filter(s => { const s0 = toMin(s.time); return s0 < t1 && (s0 + durOf(s)) > t0; });
+                        if (overlaps.some(s => s.isBooked || s.customerName || Number(s.participants) > 0)) { alert('יש תור שכבר הוזמן בטווח השעות הזה, אי אפשר לפתוח כאן מועד חדש.'); return; }
+                        if (overlaps.length) {
+                            if (!confirm(`${overlaps.length} מועדים פנויים בטווח (${overlaps.map(s => s.time).join(', ')}) יוחלפו במועד אחד באורך ${wantDur} דקות. להמשיך?`)) return;
+                            const rd = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: overlaps.map(s => ({ slotid: s.id, vfib: s.vfib, date: dateStr, time: s.time })) }) });
+                            let dd = {}; try { dd = await rd.json(); } catch (x) {}
+                            if ((dd.deletedCount || 0) < overlaps.length) { alert('לא הצלחתי לפנות את המועדים הפנויים בטווח: ' + (dd.error || JSON.stringify(dd.errors || dd))); onRefresh(); return; }
                         }
-                    }
+                        const r = await fetch(TOR4YOU_ADD_SLOTS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ date: dateStr, time }], minutes: wantDur }) });
+                        let d = {}; try { d = await r.json(); } catch (x) {}
+                        if (!d.addedCount) { alert('פתיחת המועד ב-Tor4You נכשלה: ' + (d.error || JSON.stringify(d.errors || d) || ('שגיאה ' + r.status))); onRefresh(); return; }
+                        const map = await fetchWeekSlotsMap(getWeekStart(dateObj));
+                        slot = (map[dateStr] || []).find(s => s.time === time && !s.isBooked);
+                        if (!slot || !slot.id) { alert('המועד נפתח אבל לא הצלחתי לאתר אותו כדי להזמין. רענן את היומן ונסה להזמין שוב מהמשבצת.'); onRefresh(); return; }
+                    } else if (slot && slot.isBooked) { alert('כבר קיים תור שהוזמן בשעה הזו'); return; }
                     const res = await fetch(TOR4YOU_ADD_APPT_URL, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ slotid: slot.id, vfib: slot.vfib, staff: (slot.staff && String(slot.staff) !== '0') ? slot.staff : undefined, service: (slot.service && String(slot.service) !== '0') ? slot.service : undefined, first, last, cell, email, participants: Number(parts) })
                     });
                     const data = await res.json();
-                    if (!data.success) { alert(`שגיאה מהשרת: ${data.error}`); if (isNew) onRefresh(); return; }
-                    let msg = 'התור הוזמן בהצלחה ונרשם ב-Tor4You!';
+                    if (!data.success) { alert(`שגיאה מהשרת: ${data.error}`); if (needsNewSlot) onRefresh(); return; }
+                    let msg = double ? 'התור הכפול הוזמן בהצלחה ונרשם ב-Tor4You!' : 'התור הוזמן בהצלחה ונרשם ב-Tor4You!';
                     if (selectedEmp) {
                         try { const assignId = `${dateStr}_${time.replace(':', '')}`; await setDoc(getDocRef('assignments', assignId), { date: dateStr, time, customerName: `${first} ${last}`.trim(), customerPhone: cell, players: Number(parts), employeeId: selectedEmp, room: roomName }); msg += '\nהמפעיל שויך בהצלחה.'; }
                         catch (err) { msg += `\n⚠️ התור נקבע, אבל שיוך המפעיל נכשל: ${err.message}`; }
@@ -212,34 +227,72 @@
                     alert(msg); onRefresh(); onClose();
                 } catch (err) { alert('שגיאת תקשורת: ' + err.message); } finally { setSaving(false); }
             };
+            const canChooseType = !(existingSlot && durOf(existingSlot) >= DOUBLE_MIN);
             return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 shadow-2xl max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">{isNew ? 'הוספת מועד חדש והזמנה' : 'הזמנת תור חדש'}</h3>
-                {isNew ? (<div className="space-y-2 mb-4 bg-gray-800 p-3 rounded">
+                {isNew ? (<div className="space-y-2 mb-3 bg-gray-800 p-3 rounded">
                     <div className="grid grid-cols-2 gap-3"><Input label="תאריך" type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} required /><Input label="שעה" type="time" step="900" value={time} onChange={e => setTime(e.target.value)} required /></div>
                     {chips.length > 0 && <div className="flex flex-wrap gap-1">{chips.map(c => <button type="button" key={c} onClick={() => setTime(c)} className={`text-xs px-2 py-1 rounded ${time === c ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-200'}`}>{c}</button>)}</div>}
                     <div className="text-xs opacity-80">{existingSlot ? (existingSlot.isBooked ? '⚠️ בשעה הזו כבר יש תור שהוזמן' : '✅ המועד כבר פתוח ב-Tor4You, יוזמן עליו ישירות') : 'המועד ייפתח ב-Tor4You ואז תוזמן עליו ההזמנה'}</div>
-                    {covered.size === 0 && <div className="text-xs text-yellow-300">⚠️ אף עובד לא סימן זמינות לשעה הזו (עדיין אפשר להזמין ולשייך ידנית)</div>}
-                </div>) : (<div className="text-sm opacity-80 mb-4 bg-gray-800 p-2 rounded">קביעת תור ליום {formatDateIL(dateStr)} בשעה {time}</div>)}
+                </div>) : (<div className="text-sm opacity-80 mb-3 bg-gray-800 p-2 rounded">קביעת תור ליום {formatDateIL(dateStr)} בשעה {time}</div>)}
+                {canChooseType && (<div className="mb-3"><div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setDouble(false)} className={`p-2 rounded-lg text-sm border ${!double ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-700'}`}>תור רגיל<div className="text-xs opacity-70">{time}-{minToTime(toMin(time) + SLOT_MIN)}</div></button>
+                    <button type="button" onClick={() => setDouble(true)} className={`p-2 rounded-lg text-sm border ${double ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-700'}`}>תור כפול (2 סבבים)<div className="text-xs opacity-70">{time}-{minToTime(toMin(time) + DOUBLE_MIN)}</div></button>
+                </div>{double && <div className="text-xs opacity-70 mt-1">קבוצה גדולה שמפוצלת לשני סבבים ברצף. הזן כמות שחקנים כוללת. הרווח בין הסבבים מצטמצם לחצי שעה.</div>}</div>)}
+                {!canChooseType && <div className="text-xs bg-gray-800 rounded p-2 mb-3">מועד כפול: {time}-{minToTime(toMin(time) + DOUBLE_MIN)}</div>}
+                {covered.size === 0 && <div className="text-xs text-yellow-300 mb-3">⚠️ אף עובד לא סימן זמינות לכל משך המועד (עדיין אפשר להזמין ולשייך ידנית)</div>}
                 <form onSubmit={handleAdd} className="space-y-3">
                     <div className="grid grid-cols-2 gap-4"><Input label="שם פרטי" value={first} onChange={e => setFirst(e.target.value)} required /><Input label="שם משפחה" value={last} onChange={e => setLast(e.target.value)} required /></div>
                     <Input label="טלפון נייד" type="tel" value={cell} onChange={e => setCell(e.target.value)} required />
                     <Input label="אימייל (אופציונלי)" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                    <Input label="כמות שחקנים" type="number" min="2" value={parts} onChange={e => setParts(e.target.value)} required />
+                    <Input label={double ? 'כמות שחקנים כוללת (שני סבבים)' : 'כמות שחקנים'} type="number" min="2" value={parts} onChange={e => setParts(e.target.value)} required />
                     <div className="flex flex-col gap-1"><label className="text-sm opacity-70">שיוך מפעיל (אופציונלי)</label><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)}><option value="">-- ללא שיוך כרגע --</option><option value="admin">מנהל מערכת</option>{sortedEmps.map(emp => <option key={emp.id} value={emp.id}>{emp.name}{covered.has(emp.id) ? ' ✓ פנוי' : ''}</option>)}</select></div>
                     <div className="flex gap-2 pt-2"><Button type="button" variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving ? 'שומר...' : 'הזמן תור'}</Button></div>
                 </form>
             </div></div>);
         };
 
-        const AssignModal = ({ slotData, onClose, employees, settings, onRefresh }) => {
-            const [selectedEmp, setSelectedEmp] = useState(''); const [saving, setSaving] = useState(false);
+        const EditAppointmentModal = ({ slotData, onClose, onDone }) => {
+            const nameParts = String(slotData.customerName || '').trim().split(/\s+/);
+            const [first, setFirst] = useState(nameParts[0] || ''); const [last, setLast] = useState(nameParts.slice(1).join(' '));
+            const [cell, setCell] = useState(slotData.customerPhone || ''); const [email, setEmail] = useState(''); const [parts, setParts] = useState(slotData.participants || 2);
+            const [notify, setNotify] = useState(false); const [saving, setSaving] = useState(false);
+            const handleSave = async (e) => {
+                e.preventDefault(); if (saving) return; setSaving(true);
+                try {
+                    const r = await fetch(TOR4YOU_UPDATE_APPT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: slotData.dateStr, time: slotData.time, first, last, cell, email, participants: Number(parts), sendnotice: notify }) });
+                    let d = {}; try { d = await r.json(); } catch (x) {}
+                    if (!d.success) { alert('עדכון התור נכשל: ' + (d.error || ('שגיאה ' + r.status + ' (האם פונקציות השרת עודכנו?)'))); if (d.restored === false) onDone(); return; }
+                    if (slotData.assignment) { try { await updateDoc(getDocRef('assignments', slotData.assignment.id || `${slotData.dateStr}_${slotData.time.replace(':', '')}`), { customerName: `${first} ${last}`.trim(), customerPhone: cell, players: Number(parts) }); } catch (x) {} }
+                    alert('פרטי התור עודכנו.'); onDone();
+                } catch (err) { alert('שגיאת תקשורת: ' + err.message); } finally { setSaving(false); }
+            };
+            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold mb-2 border-b border-gray-700 pb-2">עדכון פרטי הזמנה</h3>
+                <div className="text-sm opacity-80 mb-3">{formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div>
+                <form onSubmit={handleSave} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3"><Input label="שם פרטי" value={first} onChange={e => setFirst(e.target.value)} required /><Input label="שם משפחה" value={last} onChange={e => setLast(e.target.value)} /></div>
+                    <Input label="טלפון נייד" type="tel" value={cell} onChange={e => setCell(e.target.value)} required />
+                    <Input label="אימייל (ריק = ללא שינוי)" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                    <Input label="כמות שחקנים" type="number" min="1" value={parts} onChange={e => setParts(e.target.value)} required />
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} className="w-4 h-4"/> לשלוח ללקוח הודעה/מייל על העדכון</label>
+                    <div className="text-xs text-yellow-300/90 bg-yellow-900/20 border border-yellow-700/40 rounded p-2">Tor4You לא מאפשר עריכה ישירה, ולכן ההזמנה מוחלפת באחת מעודכנת באותו מועד. אם היצירה מחדש נכשלת, ההזמנה המקורית משוחזרת אוטומטית.</div>
+                    <div className="flex gap-2 pt-1"><Button type="button" variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving ? 'מעדכן...' : 'עדכן הזמנה'}</Button></div>
+                </form>
+            </div></div>);
+        };
+
+        const AssignModal = ({ slotData, onClose, employees, settings, onRefresh, constraints }) => {
+            const [selectedEmp, setSelectedEmp] = useState((slotData.assignment && slotData.assignment.employeeId) || '');
+            const [saving, setSaving] = useState(false); const [showWA, setShowWA] = useState(false); const [showEdit, setShowEdit] = useState(false);
+            const [adminName, setAdminName] = useState(() => { try { return localStorage.getItem('groom_admin_name') || ''; } catch (e) { return ''; } });
             const roomName = (settings.roomsList || 'סודו של הודיני').split(',')[0].trim();
-            const handleAdminWA = () => {
-                let saved = ''; try { saved = localStorage.getItem('groom_admin_name') || ''; } catch (e) {}
-                const ans = prompt('מי מנהל המערכת כרגע?', saved);
-                if (!ans || !ans.trim()) return;
-                try { localStorage.setItem('groom_admin_name', ans.trim()); } catch (e) {}
-                window.open(buildWAUrl(slotData.customerPhone, ans.trim(), roomName, slotData.time, 'male'), '_blank'); // מנהל מערכת - לשון זכר
+            const assignId = `${slotData.dateStr}_${slotData.time.replace(':', '')}`;
+            const currentName = slotData.assignment ? (slotData.assignment.employeeId === 'admin' ? 'מנהל מערכת' : ((employees || []).find(e => e.id === slotData.assignment.employeeId) || {}).name) : null;
+            const sendWA = () => {
+                const n = adminName.trim(); if (!n) return alert('הקלד מי מנהל המערכת כרגע');
+                try { localStorage.setItem('groom_admin_name', n); } catch (e) {}
+                window.open(buildWAUrl(slotData.customerPhone, n, roomName, slotData.time, 'male'), '_blank'); // מנהל מערכת - לשון זכר
             };
             const handleCancelAppt = async () => {
                 if (!confirm(`לבטל את התור של ${slotData.customerName || 'הלקוח'} ב-${formatDateIL(slotData.dateStr)} בשעה ${slotData.time}?\nהפעולה מוחקת את ההזמנה ב-Tor4You ואי אפשר לשחזר אותה.`)) return;
@@ -249,19 +302,58 @@
                     const r = await fetch(TOR4YOU_DELETE_APPT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: slotData.dateStr, time: slotData.time, sendnotice: notify }) });
                     let d = {}; try { d = await r.json(); } catch (x) {}
                     if (!d.success) { alert('ביטול התור נכשל: ' + (d.error || ('שגיאה ' + r.status + ' (האם פונקציות השרת עודכנו?)'))); return; }
-                    try { await deleteDoc(getDocRef('assignments', `${slotData.dateStr}_${slotData.time.replace(':', '')}`)); } catch (x) {}
-                    alert('התור בוטל.'); if (onRefresh) onRefresh(); onClose();
+                    try { await deleteDoc(getDocRef('assignments', assignId)); } catch (x) {}
+                    let extra = '';
+                    // אם אין עובד זמין למועד, סוגרים אותו כדי שלא יוצג ללקוחות סתם
+                    if (coveringEmployees(constraints || [], employees, slotData.dateStr, slotData.time, slotData.dur || SLOT_MIN).length === 0) {
+                        try {
+                            const map = await fetchWeekSlotsMap(getWeekStart(new Date(slotData.dateStr + 'T12:00:00')));
+                            const sl = (map[slotData.dateStr] || []).find(s => s.time === slotData.time && !s.isBooked && s.id && s.vfib);
+                            if (sl) {
+                                const rd = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ slotid: sl.id, vfib: sl.vfib, date: slotData.dateStr, time: slotData.time }] }) });
+                                let dd = {}; try { dd = await rd.json(); } catch (x) {}
+                                extra = dd.deletedCount ? '\nהמועד נסגר ב-Tor4You כי אין עובד זמין בשעה הזו.' : '\n⚠️ אין עובד זמין בשעה הזו, אבל לא הצלחתי לסגור את המועד.';
+                            }
+                        } catch (x) { extra = '\n⚠️ אין עובד זמין בשעה הזו, אבל לא הצלחתי לסגור את המועד.'; }
+                    }
+                    alert('התור בוטל.' + extra); if (onRefresh) onRefresh(); onClose();
                 } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setSaving(false); }
             };
             const handleAssign = async () => {
-                if(!selectedEmp) return alert('בחר עובד לשיוך'); setSaving(true);
+                setSaving(true);
                 try {
-                    const assignId = `${slotData.dateStr}_${slotData.time.replace(':','')}`;
-                    await setDoc(getDocRef('assignments', assignId), { date: slotData.dateStr, time: slotData.time, customerName: slotData.customerName, customerPhone: slotData.customerPhone, employeeId: selectedEmp, room: roomName });
-                    alert('התור שויך בהצלחה!'); onClose();
-                } catch(e) { alert(e.message); setSaving(false); }
+                    if (!selectedEmp) {
+                        if (!slotData.assignment) { alert('בחר עובד לשיוך'); return; }
+                        await deleteDoc(getDocRef('assignments', assignId)); alert('השיוך הוסר.');
+                    } else {
+                        await setDoc(getDocRef('assignments', assignId), { date: slotData.dateStr, time: slotData.time, customerName: slotData.customerName, customerPhone: slotData.customerPhone, players: Number(slotData.participants) || null, employeeId: selectedEmp, room: roomName });
+                        alert('התור שויך בהצלחה!');
+                    }
+                    onClose();
+                } catch (e) { alert(e.message); } finally { setSaving(false); }
             };
-            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl" onClick={e=>e.stopPropagation()}><h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">שיוך תור למפעיל</h3><div className="text-sm opacity-80 mb-4 space-y-1"><div><strong>זמן:</strong> {formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div><div><strong>לקוח:</strong> {slotData.customerName}</div><div><strong>טלפון:</strong> {slotData.customerPhone || 'אין'}</div>{slotData.customerPhone && <Button variant="success" onClick={handleAdminWA} className="w-full mt-2"><MessageCircle size={18}/> שלח וואטסאפ ללקוח</Button>}</div><select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-4" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)}><option value="">-- בחר מי יפעיל --</option><option value="admin">מנהל מערכת</option>{(employees||[]).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select><div className="flex gap-2"><Button variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button onClick={handleAssign} disabled={saving} className="flex-1">{saving?'שומר...':'שייך מפעיל'}</Button></div><Button variant="danger" onClick={handleCancelAppt} disabled={saving} className="w-full mt-3"><Trash2 size={16}/> בטל תור (מחיקה מ-Tor4You)</Button></div></div>);
+            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">תור שהוזמן</h3>
+                <div className="text-sm opacity-80 mb-3 space-y-1">
+                    <div><strong>זמן:</strong> {formatDateIL(slotData.dateStr)} בשעה {slotData.time}{slotData.dur >= 120 ? ' (תור כפול)' : ''}</div>
+                    <div><strong>לקוח:</strong> {slotData.customerName}{slotData.participants ? ` · ${slotData.participants} שחקנים` : ''}</div>
+                    <div><strong>טלפון:</strong> {slotData.customerPhone || 'אין'}</div>
+                    <div><strong>מפעיל משויך:</strong> {currentName ? <span className="text-green-400">{currentName}</span> : <span className="text-red-300">טרם שויך</span>}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                    <Button variant="outline" onClick={() => setShowEdit(true)}><Edit2 size={16}/> עדכון פרטים</Button>
+                    {slotData.customerPhone ? <Button variant="success" onClick={() => setShowWA(w => !w)}><MessageCircle size={16}/> וואטסאפ</Button> : <div></div>}
+                </div>
+                {showWA && (<div className="bg-gray-800 border border-gray-700 rounded-lg p-3 mb-3 space-y-2">
+                    <label className="text-sm opacity-80">מי מנהל המערכת כרגע?</label>
+                    <input type="text" value={adminName} onChange={e => setAdminName(e.target.value)} placeholder="למשל: דור" className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-indigo-500"/>
+                    <Button variant="success" onClick={sendWA} className="w-full"><MessageCircle size={16}/> שלח הודעה ללקוח</Button>
+                </div>)}
+                <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-3" value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)}><option value="">-- ללא שיוך --</option><option value="admin">מנהל מערכת</option>{(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+                <div className="flex gap-2"><Button variant="secondary" onClick={onClose} className="flex-1">סגור</Button><Button onClick={handleAssign} disabled={saving} className="flex-1">{saving ? 'שומר...' : 'שמור שיוך'}</Button></div>
+                <Button variant="danger" onClick={handleCancelAppt} disabled={saving} className="w-full mt-3"><Trash2 size={16}/> בטל תור (מחיקה מ-Tor4You)</Button>
+                {showEdit && <EditAppointmentModal slotData={slotData} onClose={() => setShowEdit(false)} onDone={() => { setShowEdit(false); if (onRefresh) onRefresh(); onClose(); }} />}
+            </div></div>);
         };
 
         const EditGroupModal = ({ group, onClose, employees, settings }) => {
@@ -477,22 +569,24 @@
                 return days.map(d => {
                     const dStr = ymd(d); const existing = slotsMap[dStr] || [];
                     const items = existing.map(s => {
-                        const cov = coveringEmployees(availCons, employees, dStr, s.time);
+                        const dur = durOf(s); const cov = coveringEmployees(availCons, employees, dStr, s.time, dur);
                         const assignment = (assignments || []).find(a => a.id === `${dStr}_${s.time.replace(':', '')}`);
-                        return { ...s, kind: s.isBooked ? 'booked' : (cov.length ? 'open' : 'uncovered'), dateStr: dStr, cov, assignment };
+                        return { ...s, kind: s.isBooked ? 'booked' : (cov.length ? 'open' : 'uncovered'), dateStr: dStr, cov, assignment, dur };
                     });
                     const have = new Set(existing.map(s => s.time));
                     if (dStr >= todayStr) candidateTimes(d, settings.openingHours).forEach(t => {
                         if (have.has(t) || (dStr === todayStr && toMin(t) <= nowMin)) return;
-                        const cov = coveringEmployees(availCons, employees, dStr, t); if (cov.length) items.push({ kind: 'planned', time: t, dateStr: dStr, cov });
+                        if (existing.some(s => toMin(s.time) < toMin(t) + SLOT_MIN && toMin(s.time) + durOf(s) > toMin(t))) return;
+                        const cov = coveringEmployees(availCons, employees, dStr, t); if (cov.length) items.push({ kind: 'planned', time: t, dateStr: dStr, cov, dur: SLOT_MIN });
                     });
                     return { d, dStr, items, range: getOpeningRange(d, settings.openingHours) };
                 });
             }, [days, slotsMap, availCons, employees, assignments, settings.openingHours]);
 
             const allStarts = dayModels.flatMap(m => m.items.map(i => sortKey(i.time)));
+            const allEnds = dayModels.flatMap(m => m.items.map(i => sortKey(i.time) + (i.dur || SLOT_MIN)));
             const gridStart = allStarts.length ? Math.max(0, Math.floor((Math.min(...allStarts) - 30) / 30) * 30) : 600;
-            const gridEnd = allStarts.length ? Math.ceil((Math.max(...allStarts) + SLOT_MIN + 30) / 30) * 30 : 1380;
+            const gridEnd = allStarts.length ? Math.ceil((Math.max(...allEnds) + 30) / 30) * 30 : 1380;
             const rows = Math.max(1, Math.round((gridEnd - gridStart) / 30)); const gridH = rows * ROW_H;
             const yOf = (min) => ((min - gridStart) / 30) * ROW_H;
             const warnings = dayModels.flatMap(m => m.items.filter(i => i.kind === 'booked' && i.dateStr >= todayStr && i.cov.length === 0 && !i.assignment));
@@ -546,11 +640,11 @@
                                         {!m.range && <div className="absolute inset-x-0 top-2 text-center text-xs opacity-40">סגור</div>}
                                         {m.dStr === todayStr && nowY >= 0 && nowY <= gridH && <div className="absolute left-0 right-0 border-t-2 border-red-500 z-20" style={{ top: nowY }}></div>}
                                         {m.items.map(i => {
-                                            const top = yOf(sortKey(i.time)) + 1; const h = (SLOT_MIN / 30) * ROW_H - 2;
+                                            const top = yOf(sortKey(i.time)) + 1; const iDur = i.dur || SLOT_MIN; const h = (iDur / 30) * ROW_H - 2;
                                             const handler = i.kind === 'booked' ? () => setAssignSlot(i) : (i.kind === 'planned' ? null : () => setAddApptSlot(i));
                                             const operator = i.assignment ? empName(i.assignment.employeeId) : null;
                                             return (<div key={i.dateStr + i.time} onClick={handler || undefined} title={i.kind === 'planned' ? `יפתח בסנכרון · זמינים: ${i.cov.map(e => e.name).join(', ')}` : (i.cov && i.cov.length ? `זמינים: ${i.cov.map(e => e.name).join(', ')}` : '')} className={`absolute left-0.5 right-0.5 rounded px-1 text-white text-[11px] leading-tight overflow-hidden z-10 transition-colors ${blockClass[i.kind]}`} style={{ top, height: h }}>
-                                                <div className="font-bold">{i.time}-{minToTime(toMin(i.time) + SLOT_MIN)}</div>
+                                                <div className="font-bold">{i.time}-{minToTime(toMin(i.time) + iDur)}{iDur >= DOUBLE_MIN ? ' · כפול' : ''}</div>
                                                 {i.kind === 'booked' && <><div className="truncate">{i.customerName || 'לקוח'}{i.participants ? ` · ${i.participants}` : ''}</div><div className={`truncate text-[10px] ${operator ? 'text-green-300' : 'text-red-300'}`}>{operator || 'טרם שויך'}{i.cov.length === 0 && !operator ? ' ⚠️' : ''}</div></>}
                                                 {i.kind === 'open' && <div className="truncate">פנויים: {i.cov.length} · הזמן +</div>}
                                                 {i.kind === 'uncovered' && <div className="truncate">אין עובד</div>}
@@ -568,7 +662,7 @@
                             {(employees || []).length === 0 && <tr><td colSpan="8" className="text-center py-4 opacity-60">אין עובדים</td></tr>}
                         </tbody></table></div>
                     </Card>
-                    {assignSlot && <AssignModal slotData={assignSlot} onClose={() => setAssignSlot(null)} employees={employees} settings={settings} onRefresh={fetchWeekSlots} />}
+                    {assignSlot && <AssignModal slotData={assignSlot} onClose={() => setAssignSlot(null)} employees={employees} settings={settings} onRefresh={fetchWeekSlots} constraints={availCons} />}
                     {addApptSlot && <AddAppointmentModal slotData={addApptSlot} onClose={() => setAddApptSlot(null)} onRefresh={fetchWeekSlots} employees={employees} settings={settings} constraints={availCons} slotsMap={slotsMap} />}
                     {showNew && <AddAppointmentModal isNew slotData={{ dateStr: todayStr, time: '12:00' }} onClose={() => setShowNew(false)} onRefresh={fetchWeekSlots} employees={employees} settings={settings} constraints={availCons} slotsMap={slotsMap} />}
                 </div>
