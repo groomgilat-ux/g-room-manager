@@ -256,7 +256,7 @@
                 const r = await fetch(TOR4YOU_ADD_SLOTS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: plan.toAdd }) });
                 let d = {}; try { d = await r.json(); } catch (e) {}
                 if (!r.ok && !d.addedCount) errors.push('פתיחת תורים נכשלה: ' + (d.error || ('שגיאה ' + r.status) + ' (האם פונקציות השרת עודכנו?)'));
-                added = d.addedCount || 0; (d.errors || []).forEach(e => errors.push(JSON.stringify(e)));
+                added = d.addedCount || 0; (d.errors || []).forEach(e => { const t = JSON.stringify(e); if (!/conflict with slot/.test(t)) errors.push(t); }); // "conflict" = המועד כבר נפתח, לא שגיאה
             }
             if (plan.toRemove.length) {
                 const r = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: plan.toRemove }) });
@@ -724,10 +724,14 @@
                 const sig = ymd(days[0]) + '|' + consSig + '|' + (employees || []).length; if (autoRef.current === sig) return; autoRef.current = sig;
                 (async () => {
                     try {
-                        const map = await fetchWeekSlotsMap(days[0]);
-                        const plan = computeSyncPlan({ weekStart: days[0], slotsMap: map, constraints: availCons, employees, settings });
-                        if (!plan.toAdd.length && !plan.toRemove.length) return;
-                        const r = await runSyncQueued(() => executeSyncPlan(plan));
+                        // כל התהליך (קריאה, תכנון וביצוע) בתור אחד, כדי ששני סנכרונים במקביל לא יפתחו את אותו מועד פעמיים
+                        const r = await runSyncQueued(async () => {
+                            const map = await fetchWeekSlotsMap(days[0]);
+                            const plan = computeSyncPlan({ weekStart: days[0], slotsMap: map, constraints: availCons, employees, settings });
+                            if (!plan.toAdd.length && !plan.toRemove.length) return null;
+                            return executeSyncPlan(plan);
+                        });
+                        if (!r) return;
                         setSyncMsg('🔄 היומן עודכן אוטומטית לפי הזמינות: ' + describeSync(r) + (r.errors.length ? '\n' + r.errors.join('\n') : ''));
                         await fetchWeekSlots();
                     } catch (e) {}
