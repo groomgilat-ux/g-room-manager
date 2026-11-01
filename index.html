@@ -66,10 +66,49 @@
         .m-stat b { display: block; font-size: 32px; margin-top: 4px; }
         .zoomctl { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
         .zoomctl button { min-width: 56px; font-size: 26px !important; }
+
+        .gl-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 40%, #1e1b4b 0, #030712 60%); }
+        .gl-svg { width: min(88vw, 460px); height: auto; }
+        .gl-runner { animation: gl-run 4s ease-in-out infinite; }
+        .gl-o1 { animation: gl-ring 4s ease-in-out infinite; }
+        .gl-bang { opacity: 0; animation: gl-bang 4s ease-in-out infinite; }
+        @keyframes gl-run {
+            0% { transform: translate(-30px, 118px); opacity: 0; }
+            4% { opacity: 1; }
+            40% { transform: translate(128px, 118px); }
+            46% { transform: translate(150px, 84px); }
+            52% { transform: translate(164px, 108px); }
+            57% { transform: translate(172px, 104px); } 62% { transform: translate(156px, 108px); } 67% { transform: translate(170px, 104px); } 72% { transform: translate(158px, 108px); }
+            77% { transform: translate(168px, 106px); } 82% { transform: translate(160px, 108px); }
+            90% { transform: translate(164px, 108px); opacity: 1; }
+            97% { transform: translate(164px, 108px); opacity: 0; }
+            100% { transform: translate(-30px, 118px); opacity: 0; }
+        }
+        @keyframes gl-ring { 0%, 50% { stroke: #818cf8; } 56%, 90% { stroke: #f87171; } 100% { stroke: #818cf8; } }
+        @keyframes gl-bang { 0%, 54% { opacity: 0; transform: translateY(8px); } 60%, 88% { opacity: 1; transform: translateY(0); } 96%, 100% { opacity: 0; } }
+        .gl-d1, .gl-d2, .gl-d3 { animation: gl-dot 1.2s infinite; } .gl-d2 { animation-delay: .2s; } .gl-d3 { animation-delay: .4s; }
+        @keyframes gl-dot { 0%, 20% { opacity: .15; } 50%, 100% { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root"><div class="gl-wrap"><svg viewBox="0 0 340 190" class="gl-svg" role="img" aria-label="טוען">
+  <line x1="10" y1="136" x2="330" y2="136" stroke="#334155" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 8"/>
+  <g class="gl-letters" fill="#e2e8f0" font-size="58" font-weight="800" text-anchor="middle" dominant-baseline="central" font-family="DejaVu Sans, Arial, sans-serif">
+    <text x="48" y="100">G</text><text x="106" y="100">R</text><text x="276" y="100">M</text>
+  </g>
+  <circle class="gl-o gl-o1" cx="164" cy="100" r="25" fill="none" stroke="#818cf8" stroke-width="9"/>
+  <circle class="gl-o" cx="220" cy="100" r="25" fill="none" stroke="#818cf8" stroke-width="9" opacity="0.75"/>
+  <g class="gl-runner"><g transform="scale(0.78)" stroke="#fbbf24" stroke-width="5" stroke-linecap="round" fill="none">
+    <circle cx="0" cy="-26" r="7" fill="#fbbf24" stroke="none"/>
+    <line x1="0" y1="-18" x2="0" y2="2"/>
+    <g transform="translate(0,-14)"><line x1="0" y1="0" x2="0" y2="14"><animateTransform attributeName="transform" type="rotate" values="-50 0 0;50 0 0;-50 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+    <g transform="translate(0,-14)"><line x1="0" y1="0" x2="0" y2="14"><animateTransform attributeName="transform" type="rotate" values="50 0 0;-50 0 0;50 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+    <g transform="translate(0,2)"><line x1="0" y1="0" x2="0" y2="18"><animateTransform attributeName="transform" type="rotate" values="45 0 0;-45 0 0;45 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+    <g transform="translate(0,2)"><line x1="0" y1="0" x2="0" y2="18"><animateTransform attributeName="transform" type="rotate" values="-45 0 0;45 0 0;-45 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+  </g></g>
+  <text class="gl-bang" x="164" y="58" fill="#f87171" font-size="26" font-weight="800" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif">!</text>
+  <text x="170" y="172" fill="#94a3b8" font-size="16" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif">טוען את המערכת<tspan class="gl-d1">.</tspan><tspan class="gl-d2">.</tspan><tspan class="gl-d3">.</tspan></text>
+</svg></div></div>
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
@@ -1043,6 +1082,24 @@
             useEffect(() => { let mq; try { mq = window.matchMedia(q); } catch (e) { return; } const h = () => setM(mq.matches); if (mq.addEventListener) mq.addEventListener('change', h); else mq.addListener(h); return () => { if (mq.removeEventListener) mq.removeEventListener('change', h); else mq.removeListener(h); }; }, []);
             return m;
         };
+        const AppLoader = () => (<div className="gl-wrap"><svg viewBox="0 0 340 190" className="gl-svg" role="img" aria-label="טוען">
+  <line x1="10" y1="136" x2="330" y2="136" stroke="#334155" strokeWidth="3" strokeLinecap="round" strokeDasharray="2 8"/>
+  <g className="gl-letters" fill="#e2e8f0" fontSize="58" fontWeight="800" textAnchor="middle" dominantBaseline="central" fontFamily="DejaVu Sans, Arial, sans-serif">
+    <text x="48" y="100">G</text><text x="106" y="100">R</text><text x="276" y="100">M</text>
+  </g>
+  <circle className="gl-o gl-o1" cx="164" cy="100" r="25" fill="none" stroke="#818cf8" strokeWidth="9"/>
+  <circle className="gl-o" cx="220" cy="100" r="25" fill="none" stroke="#818cf8" strokeWidth="9" opacity="0.75"/>
+  <g className="gl-runner"><g transform="scale(0.78)" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" fill="none">
+    <circle cx="0" cy="-26" r="7" fill="#fbbf24" stroke="none"/>
+    <line x1="0" y1="-18" x2="0" y2="2"/>
+    <g transform="translate(0,-14)"><line x1="0" y1="0" x2="0" y2="14"><animateTransform attributeName="transform" type="rotate" values="-50 0 0;50 0 0;-50 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+    <g transform="translate(0,-14)"><line x1="0" y1="0" x2="0" y2="14"><animateTransform attributeName="transform" type="rotate" values="50 0 0;-50 0 0;50 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+    <g transform="translate(0,2)"><line x1="0" y1="0" x2="0" y2="18"><animateTransform attributeName="transform" type="rotate" values="45 0 0;-45 0 0;45 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+    <g transform="translate(0,2)"><line x1="0" y1="0" x2="0" y2="18"><animateTransform attributeName="transform" type="rotate" values="-45 0 0;45 0 0;-45 0 0" dur="0.4s" repeatCount="indefinite"/></line></g>
+  </g></g>
+  <text className="gl-bang" x="164" y="58" fill="#f87171" fontSize="26" fontWeight="800" textAnchor="middle" fontFamily="DejaVu Sans, Arial, sans-serif">!</text>
+  <text x="170" y="172" fill="#94a3b8" fontSize="16" textAnchor="middle" fontFamily="DejaVu Sans, Arial, sans-serif">טוען את המערכת<tspan className="gl-d1">.</tspan><tspan className="gl-d2">.</tspan><tspan className="gl-d3">.</tspan></text>
+</svg></div>);
         const NotifyBar = ({ user }) => {
             const [state, setState] = useState(() => pushSupported() ? Notification.permission : 'unsupported');
             const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
@@ -1191,7 +1248,7 @@
                 }
             };
 
-            if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-indigo-500"><Loader className="animate-spin w-10 h-10" /></div>;
+            if (loading) return <AppLoader />;
 
             if (!currentUser) return (
                 <div className="min-h-screen flex items-center justify-center p-4">
