@@ -62,6 +62,8 @@
         .m-seg { display: flex; gap: 4px; padding: 5px; border-radius: 28px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); margin-bottom: 14px; }
         .m-seg button { flex: 1; min-height: 50px; border-radius: 24px; background: transparent; color: rgba(255,255,255,0.8); font-size: 16px !important; }
         .m-seg button.on { background: rgba(255,255,255,0.22); color: #fff; border: 1px solid rgba(255,255,255,0.3); }
+        .cal-actions { width: 100%; flex-wrap: nowrap; }
+        html.mglass .cal-actions button { flex: 1 1 0; min-width: 0; min-height: 42px !important; font-size: 14px !important; padding: 0 8px !important; white-space: nowrap; gap: 6px; border-radius: 999px !important; }
         .m-seg.slim { padding: 3px; gap: 3px; border-radius: 999px; margin-bottom: 8px; }
         html.mglass .m-seg.slim button, .m-seg.slim button { min-height: 32px !important; height: 32px; padding: 0 12px !important; font-size: 14px !important; font-weight: 600; border-radius: 999px !important; line-height: 1; }
         .m-card { background: rgba(255,255,255,0.09); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); border: 1px solid rgba(255,255,255,0.18); box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 26px rgba(0,0,0,0.3); border-radius: 24px; padding: 16px; }
@@ -884,9 +886,9 @@
                                 <Button onClick={() => setOffset(p => p + 1)}><ChevronLeft size={16}/></Button>
                                 {offset !== 0 && <Button variant="secondary" onClick={() => setOffset(0)}>השבוע</Button>}
                             </div>}
-                            <div className="flex gap-2 flex-wrap justify-center">
+                            <div className={`flex gap-2 justify-center ${mob ? 'cal-actions' : 'flex-wrap'}`}>
                                 <Button onClick={() => setShowNew(true)}><Plus size={16}/> הוסף מועד חדש</Button>
-                                <Button onClick={doRemind} disabled={reminding} variant="outline" className="bg-indigo-500/10 border-indigo-500 text-indigo-300 hover:bg-indigo-500/20">{reminding ? <Loader className="animate-spin w-4 h-4"/> : <Bell size={18}/>} שלח תזכורת זמינות לעובדים</Button>
+                                <Button onClick={doRemind} disabled={reminding} variant="outline" className="bg-indigo-500/10 border-indigo-500 text-indigo-300 hover:bg-indigo-500/20">{reminding ? <Loader className="animate-spin w-4 h-4"/> : <Bell size={mob ? 16 : 18}/>} {mob ? 'תזכורת זמינות' : 'שלח תזכורת זמינות לעובדים'}</Button>
                             </div>
                         </div>
                         {slotsErr && <div className="mb-3 text-sm bg-red-900/30 border border-red-500/40 rounded p-3 flex items-center justify-between gap-3 flex-wrap"><span>⚠️ לא הצלחתי לטעון את התורים מ-Tor4You: {slotsErr}</span><button type="button" className="chip-btn" onClick={fetchWeekSlots}>נסה שוב</button></div>}
