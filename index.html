@@ -796,7 +796,7 @@
                 } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setReminding(false); }
             };
             const [assignSlot, setAssignSlot] = useState(null); const [addApptSlot, setAddApptSlot] = useState(null); const [showNew, setShowNew] = useState(false); const [syncMsg, setSyncMsg] = useState(''); const [slotsErr, setSlotsErr] = useState('');
-            const mob = useIsMobile(); const [viewSel, setViewSel] = useState(null); const mode = mob ? (viewSel || 'day') : 'week';
+            const mob = useIsMobile(); const [viewSel, setViewSel] = useState(null); const mode = mob ? (viewSel || 'week') : 'week';
             const [selDay, setSelDay] = useState(() => new Date());
             const moveDay = (n) => { const nd = n === 0 ? new Date() : addDays(selDay, n); setSelDay(nd); setOffset(Math.round((getWeekStart(nd).getTime() - getWeekStart(new Date()).getTime()) / (7 * 864e5))); };
             const [zoom, setZoom] = useState(1);
