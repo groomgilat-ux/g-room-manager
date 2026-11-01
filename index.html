@@ -33,6 +33,13 @@
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
         .fade-in { animation: fadeIn 0.3s ease-in; } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         input[type="date"], input[type="month"], input[type="time"], select { color-scheme: dark; }
+        @media (max-width: 640px) {
+            button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
+            input, select, textarea { font-size: 16px !important; }
+            button { touch-action: manipulation; }
+            .fixed.inset-0 > div { max-width: 100% !important; border-radius: 16px; }
+            main { padding-left: 12px !important; padding-right: 12px !important; }
+        }
     </style>
 </head>
 <body>
@@ -73,7 +80,7 @@
             if (!window.__pushFg) { window.__pushFg = true; onMessage(messaging, (pl) => { const n = pl.data || pl.notification || {}; reg.showNotification(n.title || 'G-Room', { body: n.body || '', icon: '/icon-192.png', data: { tab: n.tab || '' } }); }); }
             return token;
         };
-        const TAB_MAP = { availability: 'constraints' };
+        const TAB_MAP = { availability: 'constraints', calendar: 'constraints' };
         try { const q = new URLSearchParams(location.search).get('tab'); if (q) window.__pendingTab = q; } catch (e) {}
         try { if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.openTab) { window.__pendingTab = e.data.openTab; window.dispatchEvent(new Event('groom-open-tab')); } }); } catch (e) {}
         const takePendingTab = () => { const t = window.__pendingTab; window.__pendingTab = null; return t ? (TAB_MAP[t] || t) : null; };
@@ -730,7 +737,68 @@
             );
         };
 
-        const AdminExpenses = ({ expenses, groups, shifts, employees }) => {
+        const loadXLSX = () => new Promise((resolve, reject) => {
+            if (window.XLSX) return resolve(window.XLSX);
+            const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+            sc.onload = () => resolve(window.XLSX); sc.onerror = () => reject(new Error('לא ניתן לטעון את רכיב האקסל')); document.head.appendChild(sc);
+        });
+        const groupRevenue = (g) => (Number(g.payments?.cash)||0) + (Number(g.payments?.credit)||0) + (Number(g.payments?.bit)||0) + (Number(g.payments?.transfer)||0) + (Number(g.expectedMegaLaanRevenue)||0);
+        const monthStats = (month, groups, shifts, employees, expenses) => {
+            const mg = (groups||[]).filter(g => (g.date||'').startsWith(month));
+            const revenue = mg.reduce((a, g) => a + groupRevenue(g), 0);
+            const players = mg.reduce((a, g) => a + (Number(g.totalPlayers)||0), 0);
+            const kids = mg.reduce((a, g) => a + (Number(g.kids)||0), 0); const elig = mg.reduce((a, g) => a + (Number(g.eligible)||0), 0);
+            const orig = mg.reduce((a, g) => a + (Number(g.totalOriginalPrice)||0), 0); const fin = mg.reduce((a, g) => a + (Number(g.finalPriceToPay)||0), 0);
+            let salaries = 0; (shifts||[]).filter(s => (s.date||'').startsWith(month) && s.status !== 'rejected').forEach(s => { const emp = (employees||[]).find(e => e.id === s.employeeId); salaries += (Number(s.gamesCount) * (s.wageAtTime || emp?.wagePerGame || 0)); });
+            const expensesTotal = (expenses||[]).filter(ex => isMonthInRange(month, ex.fromMonth, ex.toMonth)).reduce((a, ex) => a + (ex.monthlyAmount||0), 0);
+            const byTime = {}; mg.forEach(g => { const t = g.time || ''; if (t) byTime[t] = (byTime[t]||0) + 1; });
+            return { month, groups: mg, count: mg.length, revenue, players, avgPlayers: mg.length ? players / mg.length : 0, kids, elig, orig, fin, discAmt: Math.max(0, orig - fin), discPct: orig ? Math.max(0, (orig - fin) / orig * 100) : 0, salaries, expensesTotal, profit: revenue - salaries - expensesTotal, byTime };
+        };
+        const MonthlySummary = ({ month, groups, shifts, employees, expenses, settings }) => {
+            const cur = useMemo(() => monthStats(month, groups, shifts, employees, expenses), [month, groups, shifts, employees, expenses]);
+            const prev = useMemo(() => monthStats(shiftMonth(month, -1), groups, shifts, employees, expenses), [month, groups, shifts, employees, expenses]);
+            const [email, setEmail] = useState(settings.reportEmail || ''); const [busy, setBusy] = useState(false);
+            const fmt = (n) => Math.round(n).toLocaleString();
+            const delta = (a, b) => b ? ((a - b) / Math.abs(b) * 100) : null;
+            const Dl = ({ a, b, invert }) => { const d = delta(a, b); if (d === null) return <span className="opacity-40">-</span>; const good = invert ? d <= 0 : d >= 0; return <span className={good ? 'text-green-400' : 'text-red-400'}>{d >= 0 ? '+' : ''}{d.toFixed(0)}%</span>; };
+            const rows = [['הכנסות', cur.revenue, prev.revenue, false, '₪'], ['מספר קבוצות', cur.count, prev.count, false, ''], ['ממוצע שחקנים לקבוצה', cur.avgPlayers, prev.avgPlayers, false, '', 1], ['שכר עובדים', cur.salaries, prev.salaries, true, '₪'], ['הוצאות', cur.expensesTotal, prev.expensesTotal, true, '₪'], ['רווח', cur.profit, prev.profit, false, '₪']];
+            const allTimes = useMemo(() => { const set = new Set(); for (let i = 0; i < 7; i++) candidateTimes(new Date(2026, 0, 4 + i), settings.openingHours).forEach(t => set.add(t)); Object.keys(cur.byTime).forEach(t => set.add(t)); return [...set].sort((a, b) => sortKey(a) - sortKey(b)); }, [cur, settings.openingHours]);
+            const counts = allTimes.map(t => ({ t, n: cur.byTime[t] || 0 })); const maxN = Math.max(1, ...counts.map(c => c.n));
+            const busiest = [...counts].sort((a, b) => b.n - a.n).filter(c => c.n > 0).slice(0, 3); const emptiest = [...counts].sort((a, b) => a.n - b.n).slice(0, 3);
+            const summaryText = () => `סיכום חודשי ${month} - ${settings.businessName || 'G-Room'}\n\nהכנסות: ₪${fmt(cur.revenue)}\nשכר עובדים: ₪${fmt(cur.salaries)}\nהוצאות: ₪${fmt(cur.expensesTotal)}\nרווח: ₪${fmt(cur.profit)}\n\nקבוצות: ${cur.count} (חודש קודם: ${prev.count})\nממוצע שחקנים לקבוצה: ${cur.avgPlayers.toFixed(1)}\nהנחות: ילדים ${cur.kids}, סטודנט/חייל/נכה ${cur.elig}, סה"כ הנחה ${cur.discPct.toFixed(1)}% (₪${fmt(cur.discAmt)})\nשעות עמוסות: ${busiest.map(b => `${b.t} (${b.n})`).join(', ') || '-'}\nשעות חלשות: ${emptiest.map(b => `${b.t} (${b.n})`).join(', ')}`;
+            const saveEmail = async () => { try { await setDoc(getDocRef('app_settings', 'global'), { ...settings, reportEmail: email.trim() }, { merge: true }); } catch (e) {} };
+            const sendMail = () => { saveEmail(); window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email.trim())}&su=${encodeURIComponent('סיכום חודשי ' + month)}&body=${encodeURIComponent(summaryText())}`, '_blank'); };
+            const exportXlsx = async () => {
+                setBusy(true);
+                try {
+                    const X = await loadXLSX(); const wb = X.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] };
+                    const empName = (id) => id === 'admin' ? 'מנהל' : ((employees||[]).find(e => e.id === id) || {}).name || '';
+                    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['סעיף', 'סכום'], ['הכנסות', Math.round(cur.revenue)], ['שכר עובדים', Math.round(cur.salaries)], ['הוצאות', Math.round(cur.expensesTotal)], ['רווח', Math.round(cur.profit)], [], ['קבוצות', cur.count], ['ממוצע שחקנים', +cur.avgPlayers.toFixed(2)], ['ילדים (שחקנים)', cur.kids], ['סטודנט/חייל/נכה (שחקנים)', cur.elig], ['מחיר מקורי', Math.round(cur.orig)], ['מחיר סופי', Math.round(cur.fin)], ['אחוז הנחה כולל', +cur.discPct.toFixed(1)]]), 'סיכום');
+                    const g = [...cur.groups].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+                    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(g.map(x => ({ 'תאריך': x.date, 'שעה': x.time, 'לקוח': x.customerName, 'שחקנים': Number(x.totalPlayers)||0, 'סוג': x.groupType || '', 'מקור': x.source || '', 'מפעיל': empName(x.employeeId), 'מחיר מקורי': Number(x.totalOriginalPrice)||0, 'מחיר סופי': Number(x.finalPriceToPay)||0, 'מזומן': Number(x.payments?.cash)||0, 'אשראי': Number(x.payments?.credit)||0, 'ביט': Number(x.payments?.bit)||0, 'העברה': Number(x.payments?.transfer)||0 }))), 'הכנסות');
+                    const ex = (expenses||[]).filter(e => isMonthInRange(month, e.fromMonth, e.toMonth));
+                    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(ex.map(e => ({ 'תיאור': e.name, 'קטגוריה': e.category, 'חשבונית': e.invoiceNumber || '', 'סכום כולל': e.totalAmount, 'מחודש': e.fromMonth, 'עד חודש': e.toMonth, 'חלק החודש': +(e.monthlyAmount||0).toFixed(2) }))), 'הוצאות');
+                    const sh = (shifts||[]).filter(s => (s.date||'').startsWith(month) && s.status !== 'rejected').sort((a, b) => `${a.date}`.localeCompare(`${b.date}`));
+                    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sh.map(s => { const e = (employees||[]).find(x => x.id === s.employeeId) || {}; const rate = s.wageAtTime || e.wagePerGame || 0; return { 'עובד': e.name || '', 'תאריך': s.date, 'חדר': s.room || '', 'משחקים': Number(s.gamesCount)||0, 'תעריף': rate, 'סה"כ': (Number(s.gamesCount)||0) * rate, 'סטטוס': s.status === 'approved' ? 'אושר' : 'ממתין' }; })), 'שכר');
+                    X.writeFile(wb, `G-Room_${month}.xlsx`);
+                } catch (e) { alert('הייצוא נכשל: ' + e.message); } finally { setBusy(false); }
+            };
+            return (<Card title="סיכום חודשי והשוואה לחודש קודם" className="border-indigo-500/30"><div className="space-y-4">
+                <div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="opacity-70 border-b border-gray-700"><tr><th className="py-1">מדד</th><th>{month}</th><th>{shiftMonth(month, -1)}</th><th>שינוי</th></tr></thead><tbody className="divide-y divide-gray-800">
+                    {rows.map(r => (<tr key={r[0]}><td className="py-2">{r[0]}</td><td className="font-bold">{r[4]}{r[5] ? r[1].toFixed(1) : fmt(r[1])}</td><td className="opacity-70">{r[4]}{r[5] ? r[2].toFixed(1) : fmt(r[2])}</td><td><Dl a={r[1]} b={r[2]} invert={r[3]} /></td></tr>))}
+                </tbody></table></div>
+                <div className="text-xs bg-gray-900/60 border border-gray-700 rounded p-3 space-y-1"><div className="font-bold text-indigo-300">הנחות החודש</div><div>ילדים: {cur.kids} שחקנים · סטודנט/חייל/נכה: {cur.elig} שחקנים</div><div>הנחה כוללת: <b>{cur.discPct.toFixed(1)}%</b> (₪{fmt(cur.discAmt)} ממחיר מקורי ₪{fmt(cur.orig)})</div></div>
+                <div><div className="text-sm font-bold mb-2">עומס לפי שעת תור</div><div className="space-y-1">{counts.map(c => (<div key={c.t} className="flex items-center gap-2 text-xs"><span className="w-12 opacity-70">{c.t}</span><div className="flex-1 bg-gray-800 rounded h-3 overflow-hidden"><div className={c.n === 0 ? '' : 'bg-indigo-500 h-3'} style={{ width: `${c.n / maxN * 100}%` }}></div></div><span className="w-6 text-left">{c.n}</span></div>))}</div>
+                    <div className="text-xs mt-2 opacity-80">עמוסות: {busiest.map(b => `${b.t} (${b.n})`).join(', ') || '-'} · חלשות: {emptiest.map(b => `${b.t} (${b.n})`).join(', ')}</div></div>
+                <div className="flex flex-col gap-2 border-t border-gray-800 pt-3">
+                    <label className="text-xs opacity-70">מייל לשליחת הסיכום (שלך או של רואה החשבון)</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} onBlur={saveEmail} placeholder="name@company.com" className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"/>
+                    <div className="flex gap-2 flex-wrap"><Button onClick={sendMail}><Mail size={16}/> שלח סיכום במייל</Button><Button onClick={exportXlsx} disabled={busy} variant="success">{busy ? <Loader className="animate-spin w-4 h-4"/> : <Download size={16}/>} ייצוא XLSX</Button></div>
+                </div>
+            </div></Card>);
+        };
+
+        const AdminExpenses = ({ expenses, groups, shifts, employees, settings }) => {
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); const [showForm, setShowForm] = useState(false); const [editingExpense, setEditingExpense] = useState(null);
             const [expName, setExpName] = useState(''); const [expCategory, setExpCategory] = useState('שכירות'); const [customCategory, setCustomCategory] = useState(''); const [expAmount, setExpAmount] = useState(''); const [expFrom, setExpFrom] = useState(month); const [expTo, setExpTo] = useState(month); const [expInvoice, setExpInvoice] = useState(''); const [saving, setSaving] = useState(false);
             const defaultCats = ['שכירות','חשמל','מים','ארנונה','שיווק ופרסום','תחזוקה וציוד','ביטוח','תוכנה ודיגיטל']; const dynamicCats = [...new Set([...defaultCats, ...(expenses||[]).map(e => e.category)])].filter(Boolean);
@@ -754,6 +822,7 @@
                 <div className="space-y-6">
                     <div className="flex justify-between items-center"><div className="flex items-center gap-4"><MonthNav month={month} setMonth={setMonth}/><Button onClick={exportFinancialXLS} variant="success"><Download size={16}/> ייצוא דוח ERP</Button></div><Button onClick={()=>setShowForm(true)}><Plus size={16}/> רישום הוצאה</Button></div>
                     <div className="grid md:grid-cols-4 gap-4"><Card className="border-green-500/30 text-center"><div className="text-sm opacity-70">הכנסות ברוטו</div><div className="text-2xl font-bold text-green-400">₪{Math.round(totalRevenue).toLocaleString()}</div></Card><Card className="border-red-500/30 text-center"><div className="text-sm opacity-70">שכר עובדים</div><div className="text-2xl font-bold text-red-400">₪{Math.round(totalSalaries).toLocaleString()}</div></Card><Card className="border-orange-500/30 text-center"><div className="text-sm opacity-70">הוצאות תפעול</div><div className="text-2xl font-bold text-orange-400">₪{Math.round(totalExpenses).toLocaleString()}</div></Card><div className={`card-bg rounded-xl p-6 text-center border shadow-lg ${netProfit >= 0 ? 'border-green-500 bg-green-900/10' : 'border-red-500 bg-red-900/10'}`}><div className="text-sm font-bold">רווח נקי</div><div className={`text-3xl font-bold mt-1 ${netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>₪{Math.round(netProfit).toLocaleString()}</div></div></div>
+                    <MonthlySummary month={month} groups={groups} shifts={shifts} employees={employees} expenses={expenses} settings={settings} />
                     <Card title="מאזן חודשי">
                         <div className="space-y-4">
                             <div><div className="flex justify-between text-sm mb-1 text-green-300"><span>הכנסות</span> <span>{Math.round(revPct)}%</span></div><div className="w-full bg-gray-800 rounded-full h-4"><div className="bg-green-500 h-4 rounded-full transition-all" style={{width: `${revPct}%`}}></div></div></div>
@@ -856,6 +925,8 @@
 
         const AdminSettings = ({ settings }) => {
             const update = async (k, v) => await setDoc(getDocRef('app_settings', 'global'), { ...settings, [k]: v }, { merge: true });
+            const [backing, setBacking] = useState(false);
+            const backupNow = async () => { setBacking(true); try { const r = await fetch(`${API_URL}/backupNow`, { method: 'POST' }); const d = await r.json().catch(() => ({})); alert(d.success ? 'הגיבוי נשמר: ' + d.name : 'הגיבוי נכשל: ' + (d.error || ('שגיאה ' + r.status + ' (האם פונקציות השרת עודכנו?)'))); } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setBacking(false); } };
             const handleTemplate = async (k, v) => await update('emailTemplate', { ...settings.emailTemplate, [k]: v });
             const handlePricing = async (k, v) => await update('pricing', { ...settings.pricing, [k]: Number(v) });
             return (
@@ -864,12 +935,14 @@
                     <div className="space-y-6"><Card title="כללי"><div className="space-y-4"><Input label="שם העסק" value={settings.businessName} onChange={e => update('businessName', e.target.value)} /><Input label="קוד כניסה למנהל" value={settings.adminCode} onChange={e => update('adminCode', e.target.value)} /><Input label="רשימת חדרים (מופרד בפסיק)" value={settings.roomsList} onChange={e => update('roomsList', e.target.value)} /></div></Card><Card title="עיצוב"><div className="space-y-4"><div className="space-y-1"><label className="text-sm opacity-70">צבע רקע (ראשי)</label><input type="color" value={settings.primaryColor} onChange={e => update('primaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div><div className="space-y-1"><label className="text-sm opacity-70">צבע טקסט (משני)</label><input type="color" value={settings.secondaryColor} onChange={e => update('secondaryColor', e.target.value)} className="w-full h-10 bg-transparent cursor-pointer rounded"/></div><div className="space-y-1"><label className="text-sm opacity-70">לוגו (URL)</label><input className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white" value={settings.logo || ''} onChange={e => update('logo', e.target.value)} /></div></div></Card></div>
                     <Card title="תבנית אימייל לשכר"><div className="space-y-4"><Input label="נושא" value={settings.emailTemplate?.subject||''} onChange={e => handleTemplate('subject', e.target.value)} /><div className="space-y-1"><label className="text-sm opacity-70">תוכן (משתנים: {`{name}, {month}, {year}`})</label><textarea className="w-full bg-gray-800 border border-gray-700 rounded p-2 h-32 text-white" value={settings.emailTemplate?.body||''} onChange={e => handleTemplate('body', e.target.value)} /></div><Input label="מייל העסק" value={settings.senderEmail||''} onChange={e => update('senderEmail', e.target.value)} /></div></Card>
                     <Card title="שעות פעילות (קובעות אילו מועדים אפשר לפתוח)"><div className="space-y-2">{DAY_NAMES_EN.map((dn, i) => { const oh = settings.openingHours || INITIAL_SETTINGS.openingHours; const h = oh[dn] || { start: '', end: '' }; return (<div key={dn} className="flex items-center gap-3"><span className="w-14 text-sm">{DAY_NAMES_HE[i]}</span><input type="time" value={h.start || ''} onChange={e => update('openingHours', { ...oh, [dn]: { ...h, start: e.target.value } })} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"/><span>-</span><input type="time" value={h.end || ''} onChange={e => update('openingHours', { ...oh, [dn]: { ...h, end: e.target.value } })} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"/></div>); })}<p className="text-xs opacity-60">סיום אחרי חצות (למשל 01:00) נתמך. השאר ריק ליום סגור.</p></div></Card>
+                    <Card title="גיבוי נתונים"><div className="space-y-3"><p className="text-sm opacity-80">המערכת מגבה את כל הנתונים אוטומטית ב-1 לכל חודש בשעה 03:00 לאחסון הענן של הפרויקט. אפשר גם לגבות עכשיו.</p><Button onClick={backupNow} disabled={backing} variant="outline">{backing ? <Loader className="animate-spin w-4 h-4"/> : <Download size={16}/>} גבה עכשיו</Button></div></Card>
                 </div>
             );
         };
 
         const AdminDashboard = ({ data, settings }) => {
-            const [tab, setTab] = useState('groups');
+            const [tab, setTab] = useState(() => takePendingTab() || 'groups');
+            useEffect(() => { const h = () => { const t = takePendingTab(); if (t) setTab(t); }; window.addEventListener('groom-open-tab', h); return () => window.removeEventListener('groom-open-tab', h); }, []);
             const pendingReq = (data.requests || []).filter(r => r.status === 'pending');
             const pendingCons = (data.constraints || []).filter(c => c.status === 'pending');
             const pendingShifts = (data.shifts || []).filter(s => s.status === 'pending');
@@ -889,7 +962,7 @@
                     </div>
                     <div className="fade-in">
                         {tab==='groups' && <AdminGroups groups={data.groups||[]} employees={data.employees||[]} settings={settings} shifts={data.shifts||[]} />}
-                        {tab==='expenses' && <AdminExpenses expenses={data.expenses||[]} groups={data.groups||[]} shifts={data.shifts||[]} employees={data.employees||[]} />}
+                        {tab==='expenses' && <AdminExpenses expenses={data.expenses||[]} groups={data.groups||[]} shifts={data.shifts||[]} employees={data.employees||[]} settings={settings} />}
                         {tab==='employees' && <AdminEmployees employees={data.employees||[]}/>}
                         {tab==='shifts' && <AdminReports employees={data.employees||[]} shifts={data.shifts||[]} settings={settings}/>}
                         {tab==='constraints' && <AdminConstraints employees={data.employees||[]} constraints={data.constraints||[]} settings={settings} assignments={data.assignments||[]}/>}
