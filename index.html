@@ -106,6 +106,7 @@
         .m-stat b { display: block; font-size: 32px; margin-top: 4px; }
         .zoomctl { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
         .chip-btn { background: rgba(255,255,255,0.14) !important; border: 1px solid rgba(255,255,255,0.28) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3); color: #fff; border-radius: 999px !important; min-height: 32px !important; padding: 0 14px !important; font-size: 13px !important; font-weight: 600; line-height: 1; display: inline-flex; align-items: center; justify-content: center; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+        .chip-btn.tint { background: rgba(129,140,248,0.42) !important; }
         .chip-btn:hover { background: rgba(255,255,255,0.24) !important; }
         .chip-btn.chip-icon { min-width: 36px !important; width: 36px; height: 36px; min-height: 36px !important; padding: 0 !important; font-size: 20px !important; font-weight: 500; }
         html.mglass .chip-btn { min-height: 40px !important; font-size: 15px !important; }
@@ -146,11 +147,21 @@
 </svg>
 <div class="gl-cap">טוען את המערכת<span class="gl-d1">.</span><span class="gl-d2">.</span><span class="gl-d3">.</span></div></div></div>
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useMemo } from 'react';
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { createPortal } from 'react-dom';
         // חלון שנפתח מתוך חלון אחר (מוצג על ה-body כדי שאפקט הזכוכית של ההורה לא יצמצם אותו)
         const Portal = ({ children }) => createPortal(children, document.body);
+        const GlassSelect = ({ value, options, onChange, className = '' }) => {
+            const [open, setOpen] = useState(false); const [pos, setPos] = useState(null); const ref = useRef(null);
+            const toggle = () => { if (!open && ref.current) { const r = ref.current.getBoundingClientRect(); setPos({ top: r.bottom + 4, left: r.left, minWidth: Math.max(r.width, 110) }); } setOpen(o => !o); };
+            return (<>
+                <button type="button" ref={ref} onClick={toggle} className={`border rounded-full px-3 py-1 text-xs font-bold flex items-center gap-1 ${className}`}>{value}<span style={{ fontSize: 9, opacity: 0.8 }}>▾</span></button>
+                {open && <Portal><div className="fixed inset-0 z-[90]" onClick={() => setOpen(false)}><div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.minWidth, background: 'rgba(24,28,50,0.92)', WebkitBackdropFilter: 'blur(20px) saturate(160%)', backdropFilter: 'blur(20px) saturate(160%)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 16, padding: 4, boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
+                    {options.map(o => (<button type="button" key={o} onClick={() => { setOpen(false); if (o !== value) onChange(o); }} style={{ display: 'block', width: '100%', textAlign: 'right', color: '#fff', padding: '8px 14px', borderRadius: 12, fontSize: 14, background: o === value ? 'rgba(129,140,248,0.45)' : 'transparent' }}>{o}</button>))}
+                </div></div></Portal>}
+            </>);
+        };
         import { User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History, MessageCircle, Home, Menu } from 'lucide-react';
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -260,6 +271,8 @@
         const sortKey = (t) => { const m = toMin(t); return m < 360 ? m + 1440 : m; }; // שעות אחרי חצות בסוף
         const getOpeningRange = (d, openingHours) => { const b = openingHours && openingHours[DAY_NAMES_EN[d.getDay()]]; if (!b || !b.start || !b.end) return null; const o = toMin(b.start); let c = toMin(b.end); if (c <= o) c = 1440; return { open: o, close: Math.min(c, 1440) }; };
         // מועדים אפשריים ליום: הרשת הקבועה, מורחבת בקפיצות של 90 דקות, בתוך שעות הפעילות
+        let __slotBlocks = new Set(); // מועדים שהמנהל מחק ידנית: הסנכרון האוטומטי לא פותח אותם מחדש
+        const blockId = (dStr, time) => `${dStr}_${String(time).replace(':', '')}`;
         const candidateTimes = (d, openingHours) => {
             const r = getOpeningRange(d, openingHours); if (!r) return [];
             let t = toMin(GRID_ANCHOR[d.getDay()]);
@@ -310,6 +323,7 @@
             order.forEach(t => {
                 if (dStr === todayStr && t <= nowMin) return;
                 if (occ.some(o => t < o.b + GAP && o.a < t + SLOT_MIN + GAP)) return;
+                if (__slotBlocks.has(blockId(dStr, minToTime(t)))) return;
                 if (coveringEmployees(constraints, employees, dStr, minToTime(t)).length === 0) return;
                 out.push(t); occ.push({ a: t, b: t + SLOT_MIN });
             });
@@ -408,8 +422,24 @@
             const pick = (c) => { setFirst(c.first || ''); setLast(c.last || ''); setCell(c.cell || ''); setEmail(c.email || ''); setPickOpen(false); };
             const roomName = ((settings && settings.roomsList) || 'סודו של הודיני').split(',')[0].trim();
             const dateObj = new Date(dateStr + 'T12:00:00');
-            const existingSlot = isNew ? ((slotsMap || {})[dateStr] || []).find(s => s.time === time) : slotData;
-            const wantDur = double ? DOUBLE_MIN : (existingSlot ? durOf(existingSlot) : SLOT_MIN);
+            const origTime = slotData && slotData.time; const moved = !isNew && !!origTime && time !== origTime;
+            const existingSlot = (isNew || moved) ? ((slotsMap || {})[dateStr] || []).find(s => s.time === time) : slotData;
+            const wantDur = double ? DOUBLE_MIN : (existingSlot ? durOf(existingSlot) : (moved ? durOf(slotData) : SLOT_MIN));
+            // הזזת מועד פנוי עד שעה קדימה/אחורה, בתוך זמינות העובד ובלי לחפוף תורים אחרים
+            const canMove = !isNew && !!slotData && !slotData.isBooked && !!slotData.id;
+            const shiftOpts = canMove ? (() => { const base = toMin(origTime), dur = durOf(slotData), GAPm = STEP_MIN - SLOT_MIN; const day = ((slotsMap || {})[dateStr] || []).filter(s => s.time !== origTime); const out = []; for (let k = -4; k <= 4; k++) { if (!k) continue; const t = base + k * 15; if (t < 0 || t + dur > 1440) continue; if (day.some(s => { const a = toMin(s.time), b = a + durOf(s); return t < b + GAPm && a < t + dur + GAPm; })) continue; if (coveringEmployees(constraints, employees, dateStr, minToTime(t), dur).length === 0) continue; out.push(minToTime(t)); } return out; })() : [];
+            const deleteFreeSlot = async () => {
+                if (!canMove || saving) return;
+                if (!confirm(`למחוק את המועד הפנוי בשעה ${origTime}?\nהמערכת לא תפתח אותו מחדש אוטומטית (גם אם יש עובד פנוי).`)) return;
+                setSaving(true);
+                try {
+                    const rd = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ slotid: slotData.id, vfib: slotData.vfib, date: dateStr, time: origTime }] }) });
+                    let dd = {}; try { dd = await rd.json(); } catch (x) {}
+                    if (!dd.deletedCount) { alert('מחיקת המועד נכשלה: ' + (dd.error || JSON.stringify(dd.errors || dd))); return; }
+                    try { await setDoc(getDocRef('slot_blocks', blockId(dateStr, origTime)), { date: dateStr, time: origTime, createdAt: new Date().toISOString() }); } catch (x) {}
+                    onRefresh(); onClose();
+                } catch (e) { alert('שגיאת תקשורת: ' + e.message); } finally { setSaving(false); }
+            };
             const covered = new Set(coveringEmployees(constraints, employees, dateStr, time, wantDur).map(e => e.id));
             const sortedEmps = [...(employees || [])].sort((a, b) => (covered.has(b.id) ? 1 : 0) - (covered.has(a.id) ? 1 : 0));
             const chips = isNew ? candidateTimes(dateObj, settings && settings.openingHours) : [];
@@ -417,9 +447,14 @@
                 e.preventDefault(); if (saving) return; setSaving(true);
                 try {
                     let slot = existingSlot;
-                    const needsNewSlot = (isNew && !slot) || (double && (!slot || durOf(slot) < DOUBLE_MIN));
+                    const needsNewSlot = ((isNew || moved) && !slot) || (double && (!slot || durOf(slot) < DOUBLE_MIN));
                     if (isNew && !dateStr) { alert('יש לבחור תאריך ושעה'); return; }
                     if (needsNewSlot) {
+                        if (moved && slotData.id && slotData.vfib) { // הזזה: סוגרים את המועד הפנוי המקורי ופותחים במקומו מועד בשעה החדשה
+                            const rd0 = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ slotid: slotData.id, vfib: slotData.vfib, date: dateStr, time: origTime }] }) });
+                            let d0 = {}; try { d0 = await rd0.json(); } catch (x) {}
+                            if (!d0.deletedCount) { alert('לא הצלחתי להזיז את המועד (סגירת המועד המקורי נכשלה): ' + (d0.error || JSON.stringify(d0.errors || d0))); onRefresh(); return; }
+                        }
                         // בודקים מול Tor4You מה קיים בטווח, לא נוגעים בתור שכבר הוזמן, ופנויים בטווח מוחלפים במועד אחד
                         const fresh = await fetchWeekSlotsMap(getWeekStart(dateObj));
                         const t0 = toMin(time); const t1 = t0 + wantDur;
@@ -434,6 +469,7 @@
                         const r = await fetch(TOR4YOU_ADD_SLOTS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ date: dateStr, time }], minutes: wantDur }) });
                         let d = {}; try { d = await r.json(); } catch (x) {}
                         if (!d.addedCount) { alert('פתיחת המועד ב-Tor4You נכשלה: ' + (d.error || JSON.stringify(d.errors || d) || ('שגיאה ' + r.status))); onRefresh(); return; }
+                        try { await deleteDoc(getDocRef('slot_blocks', blockId(dateStr, time))); } catch (x) {}
                         const map = await fetchWeekSlotsMap(getWeekStart(dateObj));
                         slot = (map[dateStr] || []).find(s => s.time === time && !s.isBooked);
                         if (!slot || !slot.id) { alert('המועד נפתח אבל לא הצלחתי לאתר אותו כדי להזמין. רענן את היומן ונסה להזמין שוב מהמשבצת.'); onRefresh(); return; }
@@ -459,7 +495,7 @@
                     <div className="grid grid-cols-2 gap-3"><Input label="תאריך" type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} required /><Input label="שעה" type="time" step="900" value={time} onChange={e => setTime(e.target.value)} required /></div>
                     {chips.length > 0 && <div className="flex flex-wrap gap-1">{chips.map(c => <button type="button" key={c} onClick={() => setTime(c)} className={`text-xs px-2 py-1 rounded ${time === c ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-200'}`}>{c}</button>)}</div>}
                     <div className="text-xs opacity-80">{existingSlot ? (existingSlot.isBooked ? '⚠️ בשעה הזו כבר יש תור שהוזמן' : '✅ המועד כבר פתוח ב-Tor4You, יוזמן עליו ישירות') : 'המועד ייפתח ב-Tor4You ואז תוזמן עליו ההזמנה'}</div>
-                </div>) : (<div className="text-sm opacity-80 mb-3 bg-gray-800 p-2 rounded">קביעת תור ליום {formatDateIL(dateStr)} בשעה {time}</div>)}
+                </div>) : (<div className="text-sm opacity-80 mb-3 bg-gray-800 p-2 rounded space-y-2"><div>קביעת תור ליום {formatDateIL(dateStr)} בשעה {time}</div>{shiftOpts.length > 0 && (<div><div className="text-xs opacity-80 mb-1">הלקוח רוצה שעה אחרת? אפשר להזיז את המועד (העובד פנוי):</div><div className="flex flex-wrap gap-1">{[origTime, ...shiftOpts].sort().map(c => <button type="button" key={c} onClick={() => setTime(c)} className={`text-xs px-2 py-1 rounded ${time === c ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-200'}`}>{c}{c === origTime ? ' (מקורי)' : ''}</button>)}</div>{moved && <div className="text-xs text-amber-300 mt-1">המועד יוזז מ-{origTime} ל-{time} בעת ההזמנה, בלי לפתוח מועד נוסף.</div>}</div>)}</div>)}
                 {canChooseType && (<div className="mb-3"><div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setDouble(false)} className={`p-2 rounded-lg text-sm border ${!double ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-700'}`}>תור רגיל<div className="text-xs opacity-70">{time}-{minToTime(toMin(time) + SLOT_MIN)}</div></button>
                     <button type="button" onClick={() => setDouble(true)} className={`p-2 rounded-lg text-sm border ${double ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-700'}`}>תור כפול (2 סבבים)<div className="text-xs opacity-70">{time}-{minToTime(toMin(time) + DOUBLE_MIN)}</div></button>
@@ -475,6 +511,7 @@
                     <div className="flex flex-col gap-1"><label className="text-sm opacity-70">שיוך מפעיל (אופציונלי)</label><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)}><option value="">-- ללא שיוך כרגע --</option><option value="admin">מנהל מערכת</option>{sortedEmps.map(emp => <option key={emp.id} value={emp.id}>{emp.name}{covered.has(emp.id) ? ' ✓ פנוי' : ''}</option>)}</select></div>
                     <div className="flex gap-2 pt-2"><Button type="button" variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving ? 'שומר...' : 'הזמן תור'}</Button></div>
                 </form>
+                {canMove && <Button type="button" variant="danger" onClick={deleteFreeSlot} disabled={saving} className="w-full mt-3"><Trash2 size={16}/> מחק מועד פנוי (בלי פתיחה אוטומטית מחדש)</Button>}
             </div></div>);
         };
 
@@ -689,7 +726,7 @@
             const pendingIssues = (issues||[]).filter(i => i.status === 'pending').sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
             const roomList = (settings.roomsList || 'סודו של הודיני').split(',').map(s=>s.trim());
             useEffect(() => { if(roomList.length > 0 && !room) setRoom(roomList[0]); }, [roomList]);
-            const submitIssue = async (e) => { e.preventDefault(); setSaving(true); try { await addDoc(getCollectionRef('issues'), { room, description: desc, reportedBy: employee.id, reportedByName: employee.name, status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString() }); sendPush('admin', 'תקלה חדשה', `${employee.name} · ${room}: ${desc}`); alert('התקלה דווחה!'); setDesc(''); } catch(err) { alert(err.message); } finally { setSaving(false); } };
+            const submitIssue = async (e) => { e.preventDefault(); setSaving(true); try { await addDoc(getCollectionRef('issues'), { room, description: desc, reportedBy: employee.id, reportedByName: employee.name, status: 'pending', priority: 'רגילה', reportedAt: new Date().toISOString() }); alert('התקלה דווחה!'); setDesc(''); } catch(err) { alert(err.message); } finally { setSaving(false); } };
             return (<div className="grid md:grid-cols-2 gap-6"><Card title="דיווח על תקלה בחדר"><form onSubmit={submitIssue} className="space-y-4"><div className="flex flex-col gap-1"><label className="text-sm opacity-70">חדר</label><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={room} onChange={e=>setRoom(e.target.value)} required>{roomList.map(r => <option key={r} value={r}>{r}</option>)}</select></div><div className="flex flex-col gap-1"><label className="text-sm opacity-70">תיאור (מה נשבר?)</label><textarea className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white h-32 resize-none" value={desc} onChange={e=>setDesc(e.target.value)} required></textarea></div><Button type="submit" variant="danger" disabled={saving} className="w-full">{saving ? 'שולח...' : 'שלח דיווח למנהל'}</Button></form></Card><Card title="תקלות פתוחות"><div className="space-y-3">{pendingIssues.length === 0 && <div className="text-center py-8 opacity-60">הכל תקין! 🎉</div>}{pendingIssues.map(i => (<div key={i.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700"><div className="flex justify-between items-start mb-2"><h4 className="font-bold text-lg text-indigo-300">{i.room}</h4><span className="text-xs opacity-60">{formatDateTimeIL(i.reportedAt)} ע"י {i.reportedByName}</span></div><p className="text-sm text-gray-300 whitespace-pre-wrap">{i.description}</p></div>))}</div></Card></div>);
         };
         const EmployeeTasks = ({ employee, tasks }) => {
@@ -963,8 +1000,8 @@
 
             return (
                 <div className="space-y-6">
-                    <div className="flex justify-between items-center"><div className="flex items-center gap-4"><MonthNav month={month} setMonth={setMonth}/><Button onClick={() => exportToXLSGroups(filteredGroups, employees, shifts, `Groups_${month}.xls`)} variant="success"><Download size={16}/> ייצוא הנתונים</Button></div><Button onClick={()=>setShowManual(true)}><Plus size={16}/> דיווח ידני</Button></div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4"><Card className="text-center"><div className="opacity-70 text-sm">💵 מזומן</div><div className="text-xl font-bold">₪{totalCash}</div></Card><Card className="text-center"><div className="opacity-70 text-sm">💳 אשראי</div><div className="text-xl font-bold">₪{totalCredit}</div></Card><Card className="text-center"><div className="opacity-70 text-sm">📱 ביט והעברה</div><div className="text-xl font-bold">₪{totalBit+totalTransfer}</div></Card><Card className="text-center border-blue-500/30"><div className="text-blue-300 text-sm font-bold">🎟️ צפי שוברים</div><div className="text-xl font-bold text-blue-400">₪{totalMega}</div></Card><div className="card-bg rounded-xl p-4 text-center border-green-500 bg-green-900/20 shadow-[0_0_15px_rgba(74,222,128,0.2)]"><div className="text-green-300 text-xs font-bold tracking-wide">סך הכל הכנסות החודש</div><div className="text-2xl font-bold text-green-400 mt-1">₪{totalRevenue.toLocaleString()}</div></div></div>
+                    <div className="flex justify-between items-center"><div className="flex items-center gap-4"><MonthNav month={month} setMonth={setMonth}/><button type="button" title="ייצוא נתונים לאקסל" aria-label="ייצוא נתונים" className="chip-btn chip-icon" onClick={() => exportToXLSGroups(filteredGroups, employees, shifts, `Groups_${month}.xls`)}><Download size={18}/></button></div><button type="button" className="chip-btn tint" style={{ gap: 6, display: 'inline-flex', alignItems: 'center' }} onClick={()=>setShowManual(true)}><Plus size={16}/> דיווח ידני</button></div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4"><Card className="text-center"><div className="opacity-70 text-sm">💵 מזומן</div><div className="text-xl font-bold">₪{totalCash}</div></Card><Card className="text-center"><div className="opacity-70 text-sm">💳 אשראי</div><div className="text-xl font-bold">₪{totalCredit}</div></Card><Card className="text-center"><div className="opacity-70 text-sm">📱 ביט והעברה</div><div className="text-xl font-bold">₪{totalBit+totalTransfer}</div></Card><Card className="text-center border-blue-500/30"><div className="text-blue-300 text-sm font-bold">🎟️ צפי שוברים</div><div className="text-xl font-bold text-blue-400">₪{totalMega}</div></Card><div className="col-span-2 md:col-span-1 card-bg rounded-xl p-4 text-center border-green-500 bg-green-900/20 shadow-[0_0_15px_rgba(74,222,128,0.2)]"><div className="text-green-300 text-xs font-bold tracking-wide">סך הכל הכנסות החודש</div><div className="text-2xl font-bold text-green-400 mt-1">₪{totalRevenue.toLocaleString()}</div></div></div>
                     {gmob && (<div className="space-y-3">
                         <div className="grid grid-cols-2 gap-2"><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 text-white" value={filters.emp} onChange={e => setFilters({ ...filters, emp: e.target.value })}><option value="">מפעיל (הכל)</option><option value="admin">מנהל</option>{(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select><select className="bg-gray-800 border border-gray-700 rounded-lg px-3 text-white" value={filters.room} onChange={e => setFilters({ ...filters, room: e.target.value })}><option value="">חדר (הכל)</option>{(settings.roomsList || 'סודו של הודיני').split(',').map(r => <option key={r} value={r.trim()}>{r.trim()}</option>)}</select></div>
                         {filteredGroups.length === 0 && <div className="m-card m-sub" style={{ textAlign: 'center' }}>לא נמצאו דיווחים</div>}
@@ -1092,7 +1129,7 @@
             const monthlyShifts = (shifts||[]).filter(s => (s.date||'').startsWith(month) && s.status === 'approved');
             const pendingShifts = (shifts||[]).filter(s => s.status === 'pending');
             const report = (employees||[]).map(emp => { const empShifts = monthlyShifts.filter(s => s.employeeId === emp.id).sort((a,b) => `${a.date||''} ${a.startTime||''}`.localeCompare(`${b.date||''} ${b.startTime||''}`)); const totalWage = Math.round(empShifts.reduce((acc, s) => acc + shiftPay(s, emp.wagePerGame), 0)); const totalHours = empShifts.reduce((a, s) => a + shiftHours(s), 0); const hostingH = empShifts.reduce((a, s) => a + (Number(s.hostingMinutes)||0)/60, 0); return { ...emp, totalWage, totalHours, hostingH, avgHourly: totalHours > 0 ? totalWage / totalHours : 0, empShifts }; });
-            const totalPay = report.reduce((acc, r) => acc + r.totalWage, 0); const totalHoursAll = report.reduce((a, r) => a + r.totalHours, 0); const avgHourlyAll = totalHoursAll > 0 ? totalPay / totalHoursAll : 0;
+            const totalPay = report.reduce((acc, r) => acc + r.totalWage, 0);
             const getMailLink = (emp) => {
                 const tpl = settings.emailTemplate || INITIAL_SETTINGS.emailTemplate;
                 const vars = { name: emp.name, month: month.split('-')[1], year: month.split('-')[0] };
@@ -1107,9 +1144,9 @@
                                 {pendingShifts.map(s => { const e = (employees||[]).find(emp => emp.id === s.employeeId); return (<tr key={s.id} className="hover:bg-gray-800/30"><td className="py-2 font-bold">{e?.name || 'לא נמצא'}</td><td>{formatDateIL(s.date)}</td><td>{s.startTime}</td><td>{s.room}</td><td>{s.gamesCount}</td><td>₪{s.wageAtTime || e?.wagePerGame || 0}</td><td className="flex gap-2 py-2"><Button size="sm" variant="success" onClick={()=>handleShiftStatus(s.id, 'approved')}><Check size={14}/></Button><Button size="sm" variant="danger" onClick={()=>handleShiftStatus(s.id, 'rejected')}><XIcon size={14}/></Button><button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('shifts', s.id))} className="text-red-400 mr-2"><Trash2 size={14}/></button></td></tr>) })}
                         </tbody></table></div></Card>
                     )}
-                    <div className="flex justify-between items-center card-bg p-4 rounded-xl"><div><h2 className="text-xl font-bold text-dynamic">דוחות שכר ({month})</h2><p className="opacity-80">סה"כ לתשלום: <span className="text-green-400 font-bold">₪{totalPay.toLocaleString()}</span></p><p className="opacity-80 text-sm mt-1">שעות עבודה בפועל: <b>{fmtH(totalHoursAll)}</b> · שכר שעתי ממוצע: <b className="text-indigo-300">₪{Math.round(avgHourlyAll)}</b></p></div><div className="flex gap-2"><MonthNav month={month} setMonth={setMonth}/><Button onClick={() => exportToXLSSalary(report, `Salary_Report_${month}.xls`)} variant="success"><Download size={16}/> אקסל</Button></div></div>
+                    <div className="flex justify-between items-center card-bg p-4 rounded-xl"><div><h2 className="text-xl font-bold text-dynamic">דוחות שכר ({month})</h2><p className="opacity-80">סה"כ לתשלום: <span className="text-green-400 font-bold">₪{totalPay.toLocaleString()}</span></p></div><div className="flex gap-2"><MonthNav month={month} setMonth={setMonth}/><Button onClick={() => exportToXLSSalary(report, `Salary_Report_${month}.xls`)} variant="success"><Download size={16}/> אקסל</Button></div></div>
                     <div className="space-y-4">
-                        {report.map(r => (<div key={r.id} className="card-bg rounded-xl overflow-hidden"><div className="p-4 flex justify-between items-center"><div className="flex items-center gap-3"><div className="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold text-white">{r.name[0]}</div><span className="text-lg font-bold text-dynamic">{r.name}</span></div><div className="text-center"><div className="text-green-400 font-bold text-xl">₪{r.totalWage}</div><div className="text-[11px] opacity-70">{fmtH(r.totalHours)} שעות{r.hostingH>0?` (מתוכן ${fmtH(r.hostingH)} אירוח)`:''} · ממוצע ₪{Math.round(r.avgHourly)}/שעה</div></div><a href={getMailLink(r)} target="_blank" rel="noopener noreferrer" title={r.email ? r.email : 'לעובד אין מייל במערכת'} className="px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md transition-all border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20"><Mail size={16}/> שליחת תלוש</a></div>
+                        {report.map(r => (<div key={r.id} className="card-bg rounded-xl overflow-hidden"><div className="p-4 flex justify-between items-center"><div className="flex items-center gap-3"><div className="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center font-bold text-white">{r.name[0]}</div><span className="text-lg font-bold text-dynamic">{r.name}</span></div><div className="text-center"><div className="text-green-400 font-bold text-xl">₪{r.totalWage}</div><div className="text-[10px] opacity-70 whitespace-nowrap">{fmtH(r.totalHours)} ש׳ · ₪{Math.round(r.avgHourly)}/ש׳</div></div><a href={getMailLink(r)} target="_blank" rel="noopener noreferrer" title={r.email ? r.email : 'לעובד אין מייל במערכת'} className="px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md transition-all border-2 border-indigo-600 text-indigo-400 hover:bg-indigo-900/20"><Mail size={16}/> שליחת תלוש</a></div>
                             {r.empShifts.length > 0 && (<div className="bg-black/20 p-2 text-sm border-t border-gray-800"><div className="grid grid-cols-7 text-gray-500 mb-2 px-2 text-xs font-bold"><div>תאריך</div><div>שעה</div><div>חדר</div><div>משחקים</div><div>תעריף</div><div>סה"כ</div><div>מחק</div></div>
                                 {r.empShifts.map(s => { return (<div key={s.id} className="grid grid-cols-7 py-2 px-2 border-b border-gray-800 items-center hover:bg-white/5 opacity-80"><div>{formatDateIL(s.date)}</div><div>{s.startTime}</div><div>{s.room}</div><div>{s.gamesCount}</div><div>₪{s.wageAtTime||r.wagePerGame||0}</div><div>₪{Math.round(shiftPay(s, r.wagePerGame))}{Number(s.hostingMinutes)>0 && <span className="block text-[10px] text-amber-400">כולל אירוח {s.hostingMinutes} דק׳ (+₪{Number(s.hostingPay)||0})</span>}</div><button onClick={() => confirm("למחוק?") && deleteDoc(getDocRef('shifts', s.id))} className="text-red-500"><Trash2 size={14}/></button></div>) })}
                             </div>)}
@@ -1133,7 +1170,7 @@
             return (
                 <div className="space-y-6">
                     <Card title="דיווח על תקלה חדשה (מנהל)"><form onSubmit={submitIssue} className="flex gap-4 items-end"><div className="flex-1"><label className="text-sm opacity-70">חדר</label><select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2" value={room} onChange={e=>setRoom(e.target.value)} required>{roomList.map(r=><option key={r} value={r}>{r}</option>)}</select></div><div className="flex-[3]"><label className="text-sm opacity-70">תיאור</label><input type="text" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2" value={desc} onChange={e=>setDesc(e.target.value)} required placeholder="מה נשבר?"/></div><Button type="submit" disabled={saving}>{saving?'שולח...':'הוסף'}</Button></form></Card>
-                    <Card title="תקלות בטיפול (פתוחות)"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="opacity-70 border-b border-gray-700"><tr><th>זמן</th><th>חדר</th><th>תיאור</th><th>מדווח</th><th>עדיפות</th><th>פעולות</th></tr></thead><tbody className="divide-y divide-gray-800">{pendingIssues.length===0 && <tr><td colSpan="6" className="text-center py-6 opacity-60">הכל תקין!</td></tr>}{pendingIssues.map(i => (<tr key={i.id} className="hover:bg-white/5"><td className="py-3 text-xs opacity-70">{formatDateTimeIL(i.reportedAt)}</td><td className="font-bold">{i.room}</td><td className="max-w-xs">{i.description}</td><td className="opacity-80">{i.reportedByName}</td><td><select className={`border rounded p-1 text-xs outline-none ${getPriorityColor(i.priority)}`} value={i.priority} onChange={(e)=>handlePriority(i.id, e.target.value)}><option value="נמוכה" className="bg-gray-800 text-white">נמוכה</option><option value="רגילה" className="bg-gray-800 text-white">רגילה</option><option value="דחופה" className="bg-gray-800 text-white">דחופה</option></select></td><td className="flex items-center gap-2 py-2"><Button size="sm" variant="success" onClick={()=>handleResolve(i.id)}>טופל <Check size={14}/></Button><button onClick={()=>confirm("למחוק דיווח?") && deleteDoc(getDocRef('issues', i.id))} className="text-red-400 p-2"><Trash2 size={16}/></button></td></tr>))}</tbody></table></div></Card>
+                    <Card title="תקלות בטיפול (פתוחות)"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="opacity-70 border-b border-gray-700"><tr><th>זמן</th><th>חדר</th><th>תיאור</th><th>מדווח</th><th>עדיפות</th><th>פעולות</th></tr></thead><tbody className="divide-y divide-gray-800">{pendingIssues.length===0 && <tr><td colSpan="6" className="text-center py-6 opacity-60">הכל תקין!</td></tr>}{pendingIssues.map(i => (<tr key={i.id} className="hover:bg-white/5"><td className="py-3 text-xs opacity-70">{formatDateTimeIL(i.reportedAt)}</td><td className="font-bold">{i.room}</td><td className="max-w-xs">{i.description}</td><td className="opacity-80">{i.reportedByName}</td><td><GlassSelect className={getPriorityColor(i.priority)} value={i.priority} options={['נמוכה','רגילה','דחופה']} onChange={(v)=>handlePriority(i.id, v)} /></td><td className="flex items-center gap-2 py-2"><Button size="sm" variant="success" onClick={()=>handleResolve(i.id)}>טופל <Check size={14}/></Button><button onClick={()=>confirm("למחוק דיווח?") && deleteDoc(getDocRef('issues', i.id))} className="text-red-400 p-2"><Trash2 size={16}/></button></td></tr>))}</tbody></table></div></Card>
                     <Card title="היסטוריית תקלות שטופלו"><div className="overflow-x-auto opacity-70"><table className="w-full text-right text-sm"><thead className="border-b border-gray-700"><tr><th>זמן דיווח</th><th>חדר</th><th>תיאור התקלה</th><th>מדווח</th><th>זמן טיפול סופי</th></tr></thead><tbody className="divide-y divide-gray-800">{doneIssues.length===0 && <tr><td colSpan="5" className="text-center py-4">אין תקלות.</td></tr>}{doneIssues.map(i => (<tr key={i.id}><td className="py-2 text-xs">{formatDateTimeIL(i.reportedAt)}</td><td>{i.room}</td><td className="line-through">{i.description}</td><td>{i.reportedByName}</td><td className="text-xs">{formatDateTimeIL(i.resolvedAt)}</td></tr>))}</tbody></table></div></Card>
                 </div>
             );
@@ -1413,6 +1450,7 @@
                     onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('expenses'), s => setData(p => ({...p, expenses: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('issues'), s => setData(p => ({...p, issues: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('slot_blocks'), s => { __slotBlocks = new Set(s.docs.map(d => d.id)); }, () => {}),
                     onSnapshot(getCollectionRef('assignments'), s => setData(p => ({...p, assignments: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('app_settings'), s => {
                         if (!s.empty) { const d = s.docs.find(doc => doc.id === 'global') || s.docs[0]; if (d) setSettings(prev => ({...prev, ...d.data()})); }
