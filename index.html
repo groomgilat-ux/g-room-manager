@@ -444,7 +444,11 @@
             const sortedEmps = [...(employees || [])].sort((a, b) => (covered.has(b.id) ? 1 : 0) - (covered.has(a.id) ? 1 : 0));
             const chips = isNew ? candidateTimes(dateObj, settings && settings.openingHours) : [];
             const handleAdd = async (e) => {
-                e.preventDefault(); if (saving) return; setSaving(true);
+                e.preventDefault(); if (saving) return;
+                { let dg = String(cell || '').replace(/\D/g, ''); if (dg.length === 9 && dg[0] === '5') dg = '0' + dg;
+                  if (!/^05\d{8}$/.test(dg)) { alert(`מספר הטלפון "${cell}" לא תקין.\nנדרש מספר נייד בן 10 ספרות (למשל 0533141190). ההזמנה לא בוצעה.`); return; }
+                  if (dg !== cell) setCell(dg); }
+                setSaving(true);
                 try {
                     let slot = existingSlot;
                     const needsNewSlot = ((isNew || moved) && !slot) || (double && (!slot || durOf(slot) < DOUBLE_MIN));
@@ -476,17 +480,18 @@
                     } else if (slot && slot.isBooked) { alert('כבר קיים תור שהוזמן בשעה הזו'); return; }
                     const res = await fetch(TOR4YOU_ADD_APPT_URL, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ slotid: slot.id, vfib: slot.vfib, staff: (slot.staff && String(slot.staff) !== '0') ? slot.staff : undefined, service: (slot.service && String(slot.service) !== '0') ? slot.service : undefined, first, last, cell, email, participants: Number(parts) })
+                        body: JSON.stringify({ slotid: slot.id, vfib: slot.vfib, staff: (slot.staff && String(slot.staff) !== '0') ? slot.staff : undefined, service: (slot.service && String(slot.service) !== '0') ? slot.service : undefined, first, last, cell: String(cell).replace(/\D/g, '').replace(/^5(\d{8})$/, '05$1'), email, participants: Number(parts) })
                     });
-                    const data = await res.json();
-                    if (!data.success) { alert(`שגיאה מהשרת: ${data.error}`); if (needsNewSlot) onRefresh(); return; }
+                    let data = {}; try { data = await res.json(); } catch (x) { data = { error: 'תשובה לא תקינה מהשרת (שגיאה ' + res.status + ')' }; }
+                    if (!data.success) { let em = data.error; try { const j = typeof em === 'string' ? JSON.parse(em) : em; if (j && j.message) em = /invalid cell/i.test(j.message) ? 'מספר הטלפון לא תקין' : j.message; } catch (x) {} alert(`ההזמנה לא בוצעה.\n${em}`); onRefresh(); return; }
                     let msg = double ? 'התור הכפול הוזמן בהצלחה ונרשם ב-Tor4You!' : 'התור הוזמן בהצלחה ונרשם ב-Tor4You!';
                     if (selectedEmp) {
                         try { const assignId = `${dateStr}_${time.replace(':', '')}`; await setDoc(getDocRef('assignments', assignId), { date: dateStr, time, customerName: `${first} ${last}`.trim(), customerPhone: cell, players: Number(parts), employeeId: selectedEmp, room: roomName }); msg += '\nהמפעיל שויך בהצלחה.'; if (selectedEmp !== 'admin' && dateStr >= ymd(new Date())) sendPush(selectedEmp, 'שויך אליך תור', `${formatDateIL(dateStr)} בשעה ${time} · ${first} ${last}`.trim()); }
                         catch (err) { msg += `\n⚠️ התור נקבע, אבל שיוך המפעיל נכשל: ${err.message}`; }
                     }
-                    alert(msg); onRefresh(); onClose();
-                } catch (err) { alert('שגיאת תקשורת: ' + err.message); } finally { setSaving(false); }
+                    onClose(); try { await onRefresh(); } catch (x) {}
+                    alert('✅ ' + msg);
+                } catch (err) { alert('שגיאת תקשורת, לא בטוח שההזמנה בוצעה. היומן יתרענן, בדוק אותו לפני ניסיון נוסף.\n' + err.message); try { onRefresh(); } catch (x) {} } finally { setSaving(false); }
             };
             const canChooseType = !(existingSlot && durOf(existingSlot) >= DOUBLE_MIN);
             return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-md border border-gray-700 shadow-2xl max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
