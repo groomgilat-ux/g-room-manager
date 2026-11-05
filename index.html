@@ -560,9 +560,85 @@
             </div></div>);
         };
 
+
+        const MoveApptModal = ({ slotData, onClose, onDone, employees, settings, constraints }) => {
+            const dur = slotData.dur || SLOT_MIN;
+            const [dateStr, setDateStr] = useState(slotData.dateStr); const [map, setMap] = useState(null); const [loadErr, setLoadErr] = useState('');
+            const [pick, setPick] = useState(null); const [newTime, setNewTime] = useState(''); const [notify, setNotify] = useState(false); const [busy, setBusy] = useState(false);
+            const dateObj = new Date(dateStr + 'T12:00:00');
+            useEffect(() => { let alive = true; setMap(null); setLoadErr(''); setPick(null); setNewTime(''); if (!dateStr) return; fetchWeekSlotsMap(getWeekStart(dateObj)).then(m => { if (alive) setMap(m); }).catch(e => { if (alive) setLoadErr(e.message || 'שגיאה בטעינת היומן'); }); return () => { alive = false; }; }, [dateStr]);
+            const freeSlots = ((map || {})[dateStr] || []).filter(s => !s.isBooked && !s.customerName && !(Number(s.participants) > 0) && s.id && s.vfib && durOf(s) >= dur && !(dateStr === slotData.dateStr && s.time === slotData.time)).sort((a, b) => toMin(a.time) - toMin(b.time));
+            const chipsNew = candidateTimes(dateObj, settings && settings.openingHours).filter(t => !((map || {})[dateStr] || []).some(s => s.time === t));
+            const target = pick || (newTime ? { time: newTime, isNew: true } : null);
+            const run = async () => {
+                if (busy || !target) return;
+                let dg = String(slotData.customerPhone || '').replace(/\D/g, ''); if (dg.length === 9 && dg[0] === '5') dg = '0' + dg;
+                if (!/^05\d{8}$/.test(dg)) { alert('מספר הטלפון של הלקוח לא תקין, אי אפשר ליצור הזמנה חדשה. עדכן אותו קודם דרך "עדכון פרטים".'); return; }
+                const tTime = target.time;
+                if (!confirm(`להעביר את ${slotData.customerName || 'הלקוח'} מ-${formatDateIL(slotData.dateStr)} ${slotData.time} ל-${formatDateIL(dateStr)} ${tTime}?\nנוצרת הזמנה חדשה והישנה מבוטלת.`)) return;
+                setBusy(true);
+                try {
+                    let slot = pick;
+                    if (!slot) {
+                        const fresh = await fetchWeekSlotsMap(getWeekStart(dateObj));
+                        const t0 = toMin(tTime), t1 = t0 + dur;
+                        const overlaps = (fresh[dateStr] || []).filter(s => { const s0 = toMin(s.time); return s0 < t1 && (s0 + durOf(s)) > t0; });
+                        if (overlaps.some(s => s.isBooked || s.customerName || Number(s.participants) > 0)) { alert('יש תור שכבר הוזמן בטווח השעות הזה.'); return; }
+                        if (overlaps.length) {
+                            if (!confirm(`${overlaps.length} מועדים פנויים בטווח (${overlaps.map(s => s.time).join(', ')}) יוחלפו במועד חדש. להמשיך?`)) return;
+                            const rd = await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: overlaps.map(s => ({ slotid: s.id, vfib: s.vfib, date: dateStr, time: s.time })) }) });
+                            let dd = {}; try { dd = await rd.json(); } catch (x) {}
+                            if ((dd.deletedCount || 0) < overlaps.length) { alert('לא הצלחתי לפנות את המועדים הפנויים בטווח: ' + (dd.error || JSON.stringify(dd.errors || dd))); return; }
+                        }
+                        const r = await fetch(TOR4YOU_ADD_SLOTS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ date: dateStr, time: tTime }], minutes: dur }) });
+                        let d = {}; try { d = await r.json(); } catch (x) {}
+                        if (!d.addedCount) { alert('פתיחת המועד החדש ב-Tor4You נכשלה: ' + (d.error || JSON.stringify(d.errors || d))); return; }
+                        try { await deleteDoc(getDocRef('slot_blocks', blockId(dateStr, tTime))); } catch (x) {}
+                        const m2 = await fetchWeekSlotsMap(getWeekStart(dateObj));
+                        slot = (m2[dateStr] || []).find(s => s.time === tTime && !s.isBooked);
+                        if (!slot || !slot.id) { alert('המועד נפתח אבל לא הצלחתי לאתר אותו. רענן את היומן ונסה שוב. התור המקורי לא שונה.'); return; }
+                    }
+                    const parts = String(slotData.customerName || '').trim().split(/\s+/);
+                    const res = await fetch(TOR4YOU_ADD_APPT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slotid: slot.id, vfib: slot.vfib, staff: (slot.staff && String(slot.staff) !== '0') ? slot.staff : undefined, service: (slot.service && String(slot.service) !== '0') ? slot.service : undefined, first: parts[0] || '', last: parts.slice(1).join(' '), cell: dg, email: slotData.customerEmail || '', participants: Number(slotData.participants) || 2 }) });
+                    let data = {}; try { data = await res.json(); } catch (x) {}
+                    if (!data.success) { alert('ההזמנה במועד החדש לא בוצעה, התור המקורי נשאר במקומו.\n' + (data.error || ('שגיאה ' + res.status))); return; }
+                    // ההזמנה החדשה נוצרה. מבטלים את הישנה
+                    const rc = await fetch(TOR4YOU_DELETE_APPT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: slotData.dateStr, time: slotData.time, sendnotice: notify }) });
+                    let dc = {}; try { dc = await rc.json(); } catch (x) {}
+                    const cancelled = !!dc.success;
+                    const oldId = `${slotData.dateStr}_${slotData.time.replace(':', '')}`; const newId = `${dateStr}_${tTime.replace(':', '')}`;
+                    if (slotData.assignment) {
+                        const a = slotData.assignment; const emp = a.employeeId;
+                        try { await setDoc(getDocRef('assignments', newId), { date: dateStr, time: tTime, customerName: slotData.customerName || '', customerPhone: slotData.customerPhone || '', players: Number(slotData.participants) || null, employeeId: emp, room: a.room || ((settings.roomsList || 'סודו של הודיני').split(',')[0].trim()) }); if (cancelled) await deleteDoc(getDocRef('assignments', oldId)); } catch (x) {}
+                        if (emp && emp !== 'admin' && dateStr >= ymd(new Date())) sendPush(emp, 'התור הועבר למועד אחר', `${formatDateIL(slotData.dateStr)} ${slotData.time} ← ${formatDateIL(dateStr)} ${tTime}${slotData.customerName ? ' · ' + slotData.customerName : ''}`);
+                    }
+                    let extra = '';
+                    if (cancelled && coveringEmployees(constraints || [], employees, slotData.dateStr, slotData.time, dur).length === 0) {
+                        try { const m3 = await fetchWeekSlotsMap(getWeekStart(new Date(slotData.dateStr + 'T12:00:00'))); const old = (m3[slotData.dateStr] || []).find(s => s.time === slotData.time && !s.isBooked && s.id && s.vfib); if (old) await fetch(TOR4YOU_DELETE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slots: [{ slotid: old.id, vfib: old.vfib, date: slotData.dateStr, time: slotData.time }] }) }); } catch (x) {}
+                    }
+                    if (!cancelled) alert(`⚠️ ההזמנה החדשה נוצרה (${formatDateIL(dateStr)} ${tTime}), אבל ביטול ההזמנה הישנה נכשל: ${dc.error || ''}\nיש כרגע שתי הזמנות ללקוח. בטל ידנית את הישנה.`);
+                    else alert(`✅ התור הועבר ל-${formatDateIL(dateStr)} בשעה ${tTime}.`);
+                    onDone();
+                } catch (e) { alert('שגיאת תקשורת, לא בטוח שההעברה בוצעה. היומן יתרענן, בדוק אותו לפני ניסיון נוסף.\n' + e.message); onDone(); } finally { setBusy(false); }
+            };
+            return (<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={onClose}><div className="bg-gray-900 p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold mb-2 border-b border-gray-700 pb-2">העברת תור למועד אחר</h3>
+                <div className="text-sm opacity-80 mb-3">{slotData.customerName} · כעת: {formatDateIL(slotData.dateStr)} בשעה {slotData.time}</div>
+                <Input label="תאריך חדש" type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} />
+                {loadErr && <div className="text-xs text-red-300 mt-2">{loadErr}</div>}
+                {!map && !loadErr && <div className="text-xs opacity-70 mt-2">טוען מועדים...</div>}
+                {map && (<div className="mt-3 space-y-3">
+                    <div><div className="text-xs opacity-80 mb-1">מועדים פנויים ביום הזה:</div>{freeSlots.length === 0 ? <div className="text-xs opacity-60">אין מועדים פנויים מתאימים</div> : <div className="flex flex-wrap gap-1">{freeSlots.map(sl => <button type="button" key={sl.id} onClick={() => { setPick(sl); setNewTime(''); }} className={`text-sm px-3 py-1 rounded ${pick && pick.id === sl.id ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-200'}`}>{sl.time}</button>)}</div>}</div>
+                    <div><div className="text-xs opacity-80 mb-1">או פתיחת מועד חדש בשעה:</div><div className="flex gap-2 items-center"><input type="time" step="900" value={newTime} onChange={e => { setNewTime(e.target.value); setPick(null); }} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2" />{chipsNew.length > 0 && <div className="flex flex-wrap gap-1">{chipsNew.slice(0, 6).map(c => <button type="button" key={c} onClick={() => { setNewTime(c); setPick(null); }} className={`text-xs px-2 py-1 rounded ${newTime === c ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-200'}`}>{c}</button>)}</div>}</div></div>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} className="w-4 h-4" /> לשלוח ללקוח הודעת ביטול מ-Tor4You על המועד הישן</label>
+                </div>)}
+                <div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={onClose} className="flex-1">ביטול</Button><Button type="button" onClick={run} disabled={busy || !target} className="flex-1">{busy ? 'מעביר...' : 'העבר תור'}</Button></div>
+            </div></div>);
+        };
+
         const AssignModal = ({ slotData, onClose, employees, settings, onRefresh, constraints }) => {
             const [selectedEmp, setSelectedEmp] = useState((slotData.assignment && slotData.assignment.employeeId) || '');
-            const [saving, setSaving] = useState(false); const [showWA, setShowWA] = useState(false); const [showEdit, setShowEdit] = useState(false);
+            const [saving, setSaving] = useState(false); const [showWA, setShowWA] = useState(false); const [showEdit, setShowEdit] = useState(false); const [showMove, setShowMove] = useState(false);
             const [adminName, setAdminName] = useState(() => { try { return localStorage.getItem('groom_admin_name') || ''; } catch (e) { return ''; } });
             const roomName = (settings.roomsList || 'סודו של הודיני').split(',')[0].trim();
             const assignId = `${slotData.dateStr}_${slotData.time.replace(':', '')}`;
@@ -626,6 +702,7 @@
                     <Button variant="outline" onClick={() => setShowEdit(true)}><Edit2 size={16}/> עדכון פרטים</Button>
                     {slotData.customerPhone ? <Button variant="secondary" onClick={() => setShowWA(w => !w)}><WAIcon size={22}/> וואטסאפ</Button> : <div></div>}
                 </div>
+                <Button variant="outline" className="w-full mb-3" onClick={() => setShowMove(true)}><Calendar size={16}/> העבר למועד אחר</Button>
                 {showWA && (<div className="bg-gray-800 border border-gray-700 rounded-lg p-3 mb-3 space-y-2">
                     <label className="text-sm opacity-80">מי מנהל המערכת כרגע?</label>
                     <input type="text" value={adminName} onChange={e => setAdminName(e.target.value)} placeholder="למשל: דור" className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-indigo-500"/>
@@ -634,6 +711,7 @@
                 <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white mb-3" value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)}><option value="">-- ללא שיוך --</option><option value="admin">מנהל מערכת</option>{(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
                 <div className="flex gap-2"><Button variant="secondary" onClick={onClose} className="flex-1">סגור</Button><Button onClick={handleAssign} disabled={saving} className="flex-1">{saving ? 'שומר...' : 'שמור שיוך'}</Button></div>
                 <Button variant="danger" onClick={handleCancelAppt} disabled={saving} className="w-full mt-3"><Trash2 size={16}/> בטל תור (מחיקה מ-Tor4You)</Button>
+                {showMove && <Portal><MoveApptModal slotData={slotData} employees={employees} settings={settings} constraints={constraints} onClose={() => setShowMove(false)} onDone={() => { setShowMove(false); if (onRefresh) onRefresh(); onClose(); }} /></Portal>}
                 {showEdit && <Portal><EditAppointmentModal slotData={slotData} onClose={() => setShowEdit(false)} onDone={() => { setShowEdit(false); if (onRefresh) onRefresh(); onClose(); }} /></Portal>}
             </div></div>);
         };
