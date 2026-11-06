@@ -723,7 +723,7 @@ exports.loginInfo = functions.https.onRequest((req, res) => {
 });
 
 const LOGIN_SA = 'firebase-adminsdk-fbsvc@g-room-escape-room-management.iam.gserviceaccount.com'; // חשבון עם הרשאת חתימה על אסימוני כניסה
-exports.loginServer = functions.runWith({ serviceAccount: LOGIN_SA }).https.onRequest((req, res) => {
+exports.loginServer = require('firebase-functions/v1').runWith({ serviceAccount: LOGIN_SA }).https.onRequest((req, res) => {
     cors(req, res, async () => {
         if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
         try {
@@ -762,7 +762,7 @@ exports.loginServer = functions.runWith({ serviceAccount: LOGIN_SA }).https.onRe
 });
 
 // בדיקת תקינות: האם השרת מסוגל להנפיק אסימוני כניסה (לא חושף מידע)
-exports.loginSelfTest = functions.runWith({ serviceAccount: LOGIN_SA }).https.onRequest((req, res) => {
+exports.loginSelfTest = require('firebase-functions/v1').runWith({ serviceAccount: LOGIN_SA }).https.onRequest((req, res) => {
     cors(req, res, async () => {
         try { await admin.auth().createCustomToken('selftest', { role: 'none' }); return res.status(200).json({ ok: true }); }
         catch (e) { return res.status(200).json({ ok: false, error: e.message }); }
