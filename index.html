@@ -792,12 +792,43 @@
             );
         };
 
-        const EmployeeUpcoming = ({ employee, assignments, settings }) => {
+        const EmployeeUpcoming = ({ employee, assignments, settings, swaps, employees }) => {
             const todayStr = new Date().toISOString().slice(0, 10);
             const myAssignments = (assignments||[]).filter(a => a.employeeId === employee.id && (a.date||'') >= todayStr).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
             const roomName = (settings?.roomsList || 'סודו של הודיני').split(',')[0].trim();
-            const [waOpen, setWaOpen] = useState(null);
-            return (<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700"><div className="flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="secondary" onClick={()=>setWaOpen(w => w === a.id ? null : a.id)} className="rounded-full w-12 h-12 p-0"><WAIcon size={30}/></Button></div>{waOpen === a.id && <div className="mt-3"><WAMenu id={a.id} phone={a.customerPhone} empName={employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name} room={a.room || roomName} time={a.time} gender={employee.role === 'admin' ? 'male' : employee.gender} /></div>}</div>))}</div></Card>);
+            const [waOpen, setWaOpen] = useState(null); const [swapOpen, setSwapOpen] = useState(null); const [swapTo, setSwapTo] = useState(''); const [busy, setBusy] = useState(false);
+            const pending = (swaps || []).filter(w => w.status === 'pending' && (w.date || '') >= todayStr);
+            const colleagues = (employees || []).filter(e => e.id !== employee.id);
+            const mineAsk = (aid) => pending.find(w => w.assignId === aid && w.fromEmpId === employee.id);
+            const incoming = pending.filter(w => w.fromEmpId !== employee.id && (!w.toEmpId || w.toEmpId === employee.id) && ((assignments || []).find(x => x.id === w.assignId) || {}).employeeId === w.fromEmpId);
+            const descr = (x) => `${formatDateIL(x.date)} בשעה ${x.time}${x.customerName ? ' · ' + x.customerName : ''}`;
+            const reqSwap = async (a) => {
+                if (busy) return; setBusy(true);
+                try {
+                    await setDoc(getDocRef('swaps', `${a.id}_${employee.id}`), { assignId: a.id, date: a.date, time: a.time, customerName: a.customerName || '', room: a.room || '', fromEmpId: employee.id, fromName: employee.name, toEmpId: swapTo || '', status: 'pending', createdAt: new Date().toISOString() });
+                    (swapTo ? colleagues.filter(c => c.id === swapTo) : colleagues).forEach(c => sendPush(c.id, `${employee.name} מבקש/ת להחליף תור`, descr(a), 'upcoming'));
+                    setSwapOpen(null); setSwapTo(''); alert('בקשת ההחלפה נשלחה.');
+                } catch (e) { alert('שליחת הבקשה נכשלה: ' + e.message); } finally { setBusy(false); }
+            };
+            const cancelSwap = async (w) => { try { await updateDoc(getDocRef('swaps', w.id), { status: 'cancelled' }); } catch (e) { alert(e.message); } };
+            const accept = async (w) => {
+                if (busy) return; if (!confirm(`לקחת את התור: ${descr(w)} ?\nהתור יעבור אליך.`)) return; setBusy(true);
+                try {
+                    const cur = (assignments || []).find(x => x.id === w.assignId);
+                    if (!cur || cur.employeeId !== w.fromEmpId) { alert('התור כבר לא זמין להחלפה.'); return; }
+                    const { id, ...rest } = cur;
+                    await setDoc(getDocRef('assignments', w.assignId), { ...rest, employeeId: employee.id });
+                    await updateDoc(getDocRef('swaps', w.id), { status: 'accepted', acceptedBy: employee.id, acceptedByName: employee.name, acceptedAt: new Date().toISOString() });
+                    sendPush(w.fromEmpId, 'התור שלך הוחלף', `${employee.name} לקח/ה את התור: ${descr(w)}`, 'upcoming');
+                    sendPush('admin', 'החלפת תור בין עובדים', `${w.fromName} ← ${employee.name} · ${descr(w)}`, 'calendar');
+                    alert('התור עבר אליך.');
+                } catch (e) { alert('הפעולה נכשלה: ' + e.message); } finally { setBusy(false); }
+            };
+            return (<div className="space-y-4">{incoming.length > 0 && (<Card title="בקשות החלפה פתוחות" className="border-amber-500/40"><div className="space-y-3">{incoming.map(w => (<div key={w.id} className="bg-gray-800/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center gap-3"><div><div className="font-bold text-amber-300">{descr(w)}</div><div className="text-xs opacity-70">{w.fromName} מבקש/ת החלפה{w.toEmpId ? ' (אליך ספציפית)' : ''}</div></div><Button onClick={() => accept(w)} disabled={busy}>אני לוקח/ת</Button></div>))}</div></Card>)}<Card title="המשמרות הקרובות שלי">{myAssignments.length === 0 && <div className="text-center py-8 opacity-60">אין משמרות בעתיד הקרוב.</div>}<div className="grid md:grid-cols-2 gap-4">{myAssignments.map(a => (<div key={a.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700"><div className="flex justify-between items-center"><div><div className="font-bold text-lg text-indigo-300">{formatDateIL(a.date)} | {a.time}</div><div className="text-sm">לקוח: {a.customerName} ({a.customerPhone || 'ללא טלפון'})</div><div className="text-xs opacity-70">חדר: {a.room}</div></div><Button variant="secondary" onClick={()=>setWaOpen(w => w === a.id ? null : a.id)} className="rounded-full w-12 h-12 p-0"><WAIcon size={30}/></Button></div>{waOpen === a.id && <div className="mt-3"><WAMenu id={a.id} phone={a.customerPhone} empName={employee.role === 'admin' ? 'מהצוות של חדרי בריחה G-Room' : employee.name} room={a.room || roomName} time={a.time} gender={employee.role === 'admin' ? 'male' : employee.gender} /></div>}
+                {(() => { const ask = mineAsk(a.id); if (ask) return (<div className="mt-3 flex items-center justify-between gap-2 text-xs bg-amber-900/20 border border-amber-700/40 rounded-lg p-2"><span>ממתין להחלפה{ask.toEmpId ? ` (ל${((employees || []).find(e => e.id === ask.toEmpId) || {}).name || 'עובד'})` : ' (לכל העובדים)'}</span><button type="button" className="chip-btn" onClick={() => cancelSwap(ask)}>בטל בקשה</button></div>);
+                    if (swapOpen === a.id) return (<div className="mt-3 space-y-2"><select className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" value={swapTo} onChange={e => setSwapTo(e.target.value)}><option value="">לכל העובדים</option>{colleagues.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><div className="flex gap-2"><Button variant="secondary" onClick={() => setSwapOpen(null)} className="flex-1">ביטול</Button><Button onClick={() => reqSwap(a)} disabled={busy} className="flex-1">שלח בקשה</Button></div></div>);
+                    return (<div className="mt-3"><button type="button" className="chip-btn" onClick={() => { setSwapOpen(a.id); setSwapTo(''); }}>בקש החלפה</button></div>); })()}
+                </div>))}</div></Card></div>);
         };
         const EmployeeHistory = ({ employee, groups, shifts }) => {
             const [month, setMonth] = useState(thisMonth());
@@ -903,7 +934,7 @@
                             <button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center whitespace-nowrap gap-2 px-4 py-2 rounded text-dynamic ${tab===t.id?'bg-indigo-600 text-white':''}`}>{mob ? t.s : t.l}{t.c > 0 && <span className={`${t.color} text-white text-xs px-1.5 py-0.5 rounded-full font-bold`}>{t.c}</span>}</button>
                         ))}
                     </div>
-                    {tab==='upcoming' && <EmployeeUpcoming employee={employee} assignments={data.assignments||[]} settings={settings}/>}
+                    {tab==='upcoming' && <EmployeeUpcoming employee={employee} assignments={data.assignments||[]} settings={settings} swaps={data.swaps||[]} employees={data.employees||[]}/>}
                     {tab==='report' && <div className="space-y-8"><GroupReportForm employeeId={employee.id} employees={data.employees} settings={settings} onSave={()=>{}}/><div className="border-t border-gray-800 pt-8 mt-8"><h2 className="text-2xl font-bold mb-6">היסטוריית הדיווחים שלי</h2><EmployeeHistory employee={employee} groups={data.groups||[]} shifts={data.shifts||[]}/></div></div>}
                     {tab==='constraints' && <EmployeeConstraints employee={employee} constraints={data.constraints||[]} employees={data.employees||[]} settings={settings}/>}
                     {tab==='issues' && <EmployeeIssues employee={employee} issues={data.issues||[]} settings={settings}/>}
@@ -1533,6 +1564,7 @@
                     onSnapshot(getCollectionRef('groups'), s => setData(p => ({...p, groups: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('expenses'), s => setData(p => ({...p, expenses: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('issues'), s => setData(p => ({...p, issues: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
+                    onSnapshot(getCollectionRef('swaps'), s => setData(p => ({...p, swaps: s.docs.map(d => ({id: d.id, ...d.data()}))})), () => {}),
                     onSnapshot(getCollectionRef('slot_blocks'), s => { __slotBlocks = new Set(s.docs.map(d => d.id)); }, () => {}),
                     onSnapshot(getCollectionRef('assignments'), s => setData(p => ({...p, assignments: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('app_settings'), s => {
