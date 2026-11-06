@@ -1564,7 +1564,7 @@
                 const un = onAuthStateChanged(auth, setUser);
                 return () => { alive = false; un(); };
             }, []);
-            useEffect(() => { if (!currentUser) { setSession(null); if (__secure) { signOut(auth).catch(() => {}); } } }, [currentUser]);
+            useEffect(() => { if (!currentUser) { setSession(null); if (__secure) { signOut(auth).catch(() => {}); setData({ employees: [], shifts: [], constraints: [], requests: [], tasks: [], groups: [], expenses: [], issues: [], assignments: [], swaps: [] }); __codes = {}; __adminSecrets = {}; } } }, [currentUser]);
 
             useEffect(() => {
                 if (!user) return;
