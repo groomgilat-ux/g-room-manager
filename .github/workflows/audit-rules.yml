@@ -1,0 +1,22 @@
+name: Audit Firebase Rules (read-only)
+on:
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          token_format: access_token
+        id: auth
+      - name: קריאת חוקים (לקריאה בלבד)
+        run: |
+          P=g-room-escape-room-management
+          H="Authorization: Bearer ${{ steps.auth.outputs.access_token }}"
+          echo "== releases =="
+          curl -s -H "$H" "https://firebaserules.googleapis.com/v1/projects/$P/releases" | tee rel.json | head -c 3000
+          echo
+          for N in $(python3 -c "import json;[print(r['rulesetName']) for r in json.load(open('rel.json')).get('releases',[])]"); do
+            echo "== ruleset $N =="; curl -s -H "$H" "https://firebaserules.googleapis.com/v1/$N" | python3 -c "import sys,json;d=json.load(sys.stdin);[print('--',f.get('name'),'\n',f.get('content')) for f in d.get('source',{}).get('files',[])]"
+          done
