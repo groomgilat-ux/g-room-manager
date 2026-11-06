@@ -8,12 +8,11 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          token_format: access_token
-        id: auth
+      - uses: google-github-actions/setup-gcloud@v2
       - name: קריאת חוקים (לקריאה בלבד)
         run: |
           P=g-room-escape-room-management
-          H="Authorization: Bearer ${{ steps.auth.outputs.access_token }}"
+          H="Authorization: Bearer $(gcloud auth print-access-token)"
           echo "== releases =="
           curl -s -H "$H" "https://firebaserules.googleapis.com/v1/projects/$P/releases" | tee rel.json | head -c 3000
           echo
