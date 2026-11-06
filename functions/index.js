@@ -404,7 +404,7 @@ async function markStamp(stamp) {
 // כל 20 דקות (הופחת כדי לא להציף את Tor4You; בהמשך יוחלף ב-Webhook): מחפש הזמנות חדשות ב-Tor4You שלא הוזנו מהמערכת ומתריע למנהל
 exports.checkNewBookings = onSchedule({ schedule: 'every 20 minutes', timeZone: 'Asia/Jerusalem', region: 'us-central1' }, async () => {
     // כשה-Webhook של Tor4You מוגדר, הסריקה היא רק גיבוי ורצה פעם בשעה
-    try { const g = await gdb().collection('app_settings').doc('global').get(); if (g.exists && g.data().t4yWebhookSecret && new Date().getMinutes() >= 20) return; } catch (e) {}
+    try { const [g, sec] = await Promise.all([gdb().collection('app_settings').doc('global').get(), gdb().collection('admin_secrets').doc('main').get()]); const has = (sec.exists && sec.data().t4yWebhookSecret) || (g.exists && g.data().t4yWebhookSecret); if (has && new Date().getMinutes() >= 20) return; } catch (e) {}
     const today = jlDateTime();
     const list = await fetchTor4You(`/api/apptlist?from=${today}&to=${addDaysCompact(today, 120)}`);
     if (!(list.status == 1)) return;
@@ -670,8 +670,8 @@ const crypto = require("crypto");
 exports.tor4youWebhook = functions.https.onRequest(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).send('POST only');
     try {
-        const g = await gdb().collection('app_settings').doc('global').get();
-        const secret = g.exists ? g.data().t4yWebhookSecret : '';
+        const [g, sec] = await Promise.all([gdb().collection('app_settings').doc('global').get(), gdb().collection('admin_secrets').doc('main').get()]);
+        const secret = (sec.exists && sec.data().t4yWebhookSecret) || (g.exists ? g.data().t4yWebhookSecret : '');
         if (!secret) { console.warn('tor4youWebhook: no secret configured'); return res.status(401).send('secret not configured'); }
         const raw = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
         const ts = req.get('X-Webhook-Timestamp') || ''; const sig = (req.get('X-Webhook-Signature') || '').replace(/^sha256=/, '');

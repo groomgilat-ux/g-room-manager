@@ -1,0 +1,48 @@
+name: Secure Mode (activate / rollback)
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'activate או rollback'
+        required: true
+        default: 'activate'
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: npm install firebase-admin@13
+        working-directory: security
+      - name: ACTIVATE
+        if: ${{ github.event.inputs.action == 'activate' }}
+        run: |
+          set -e
+          P=g-room-escape-room-management
+          node security/migrate.js copy
+          TOKEN=$(gcloud auth print-access-token)
+          python3 - <<'PY' > body.json
+          import json
+          print(json.dumps({"source":{"files":[{"name":"firestore.rules","content":open("security/firestore.rules").read()}]}}))
+          PY
+          RS=$(curl -sf -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d @body.json "https://firebaserules.googleapis.com/v1/projects/$P/rulesets" | python3 -c "import sys,json;print(json.load(sys.stdin)['name'])")
+          echo "new ruleset: $RS"
+          curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"release\":{\"name\":\"projects/$P/releases/cloud.firestore/groom\",\"rulesetName\":\"$RS\"}}" "https://firebaserules.googleapis.com/v1/projects/$P/releases/cloud.firestore/groom" > /dev/null
+          echo "rules deployed"
+          node security/migrate.js finish
+      - name: ROLLBACK
+        if: ${{ github.event.inputs.action == 'rollback' }}
+        run: |
+          set -e
+          P=g-room-escape-room-management
+          TOKEN=$(gcloud auth print-access-token)
+          OLD=projects/$P/rulesets/db34dd4c-9b10-4534-97d2-b84d87dcbd96
+          curl -sf -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"release\":{\"name\":\"projects/$P/releases/cloud.firestore/groom\",\"rulesetName\":\"$OLD\"}}" "https://firebaserules.googleapis.com/v1/projects/$P/releases/cloud.firestore/groom" > /dev/null
+          echo "old rules restored"
+          node security/migrate.js rollback

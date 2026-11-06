@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null && request.auth.token.role != null; }
+    function isAdmin() { return signed() && request.auth.token.role == 'admin'; }
+    function me() { return request.auth.token.empId; }
+
+    // ברירת מחדל: מנהל בלבד (כולל employee_codes, admin_secrets, expenses, requests, push_state ועוד)
+    match /{document=**} { allow read, write: if isAdmin(); }
+
+    match /employees/{id} { allow read: if signed(); }
+    match /app_settings/{id} { allow read: if signed(); }
+
+    match /shifts/{id} {
+      allow read: if signed() && resource.data.employeeId == me();
+      allow create: if signed() && request.resource.data.employeeId == me() && request.resource.data.status == 'pending';
+    }
+    match /constraints/{id} {
+      allow read, update, delete: if signed() && resource.data.employeeId == me();
+      allow create: if signed() && request.resource.data.employeeId == me();
+    }
+    match /requests/{id} { allow create: if signed() && request.resource.data.employeeId == me(); }
+    match /tasks/{id} {
+      allow read, update: if signed() && resource.data.assigneeId == me();
+    }
+    match /groups/{id} {
+      allow read, delete: if signed() && resource.data.employeeId == me();
+      allow create: if signed() && request.resource.data.employeeId == me();
+    }
+    match /issues/{id} {
+      allow read: if signed() && resource.data.reportedBy == me();
+      allow create: if signed() && request.resource.data.reportedBy == me();
+    }
+    match /assignments/{id} {
+      allow read: if signed() && resource.data.employeeId == me();
+      // החלפת תור: מותר רק כשיש בקשת החלפה פתוחה מהעובד שהתור שלו כרגע
+      allow update: if signed() && request.resource.data.employeeId == me()
+        && get(/databases/$(database)/documents/swaps/$(id + '_' + resource.data.employeeId)).data.status == 'pending';
+    }
+    match /swaps/{id} {
+      allow read: if signed();
+      allow create: if signed() && request.resource.data.fromEmpId == me();
+      allow update: if signed();
+    }
+    match /push_tokens/{id} {
+      allow create: if signed() && request.resource.data.employeeId == me();
+      allow update: if signed();
+    }
+    match /wa_sent/{id} { allow read, write: if signed(); }
+  }
+}

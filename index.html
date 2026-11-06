@@ -164,11 +164,14 @@
         };
         import { User, Users, Calendar, DollarSign, Settings, LogOut, Plus, Clock, FileText, Mail, CheckCircle, XCircle, Lock, AlertTriangle, X as XIcon, Edit2, CheckSquare, Coins, LineChart, Receipt, Download, Trash2, Check, ChevronRight, ChevronLeft, Loader, Bell, Wrench, History, MessageCircle, Home, Menu } from 'lucide-react';
         import { initializeApp } from 'firebase/app';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+        import { getAuth, signInAnonymously, signInWithCustomToken, signOut, onAuthStateChanged } from 'firebase/auth';
+        import { getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, deleteField } from 'firebase/firestore';
 
         const firebaseConfig = { apiKey: "AIzaSyBvayS247KEOVqZloFrNWV3svg4DSiNG08", authDomain: "g-room-escape-room-management.firebaseapp.com", projectId: "g-room-escape-room-management", storageBucket: "g-room-escape-room-management.firebasestorage.app", messagingSenderId: "361117379721", appId: "1:361117379721:web:3019eaeb30f4fe188caa58" };
         const app = initializeApp(firebaseConfig); const auth = getAuth(app); const db = getFirestore(app, 'groom');
+        let __secure = false; let __codes = {}; let __adminSecrets = {}; // מצב מאובטח: קודים וסודות נשמרים באוספים נפרדים למנהל בלבד
+        const codeOf = (e) => (__codes[e.id] !== undefined ? __codes[e.id] : e.code);
+        const saveSecret = async (k, v) => { await setDoc(doc(db, 'admin_secrets', 'main'), { [k]: v }, { merge: true }); };
         
         const API_URL = "https://us-central1-g-room-escape-room-management.cloudfunctions.net";
         const TOR4YOU_ADD_APPT_URL = `${API_URL}/addTor4YouAppointment`;
@@ -800,12 +803,12 @@
             const pending = (swaps || []).filter(w => w.status === 'pending' && (w.date || '') >= todayStr);
             const colleagues = (employees || []).filter(e => e.id !== employee.id);
             const mineAsk = (aid) => pending.find(w => w.assignId === aid && w.fromEmpId === employee.id);
-            const incoming = pending.filter(w => w.fromEmpId !== employee.id && (!w.toEmpId || w.toEmpId === employee.id) && ((assignments || []).find(x => x.id === w.assignId) || {}).employeeId === w.fromEmpId);
+            const incoming = pending.filter(w => w.fromEmpId !== employee.id && (!w.toEmpId || w.toEmpId === employee.id));
             const descr = (x) => `${formatDateIL(x.date)} בשעה ${x.time}${x.customerName ? ' · ' + x.customerName : ''}`;
             const reqSwap = async (a) => {
                 if (busy) return; setBusy(true);
                 try {
-                    await setDoc(getDocRef('swaps', `${a.id}_${employee.id}`), { assignId: a.id, date: a.date, time: a.time, customerName: a.customerName || '', room: a.room || '', fromEmpId: employee.id, fromName: employee.name, toEmpId: swapTo || '', status: 'pending', createdAt: new Date().toISOString() });
+                    await setDoc(getDocRef('swaps', `${a.id}_${employee.id}`), { assignId: a.id, date: a.date, time: a.time, customerName: a.customerName || '', customerPhone: a.customerPhone || '', players: a.players || null, room: a.room || '', fromEmpId: employee.id, fromName: employee.name, toEmpId: swapTo || '', status: 'pending', createdAt: new Date().toISOString() });
                     (swapTo ? colleagues.filter(c => c.id === swapTo) : colleagues).forEach(c => sendPush(c.id, `${employee.name} מבקש/ת להחליף תור`, descr(a), 'upcoming'));
                     setSwapOpen(null); setSwapTo(''); alert('בקשת ההחלפה נשלחה.');
                 } catch (e) { alert('שליחת הבקשה נכשלה: ' + e.message); } finally { setBusy(false); }
@@ -814,10 +817,8 @@
             const accept = async (w) => {
                 if (busy) return; if (!confirm(`לקחת את התור: ${descr(w)} ?\nהתור יעבור אליך.`)) return; setBusy(true);
                 try {
-                    const cur = (assignments || []).find(x => x.id === w.assignId);
-                    if (!cur || cur.employeeId !== w.fromEmpId) { alert('התור כבר לא זמין להחלפה.'); return; }
-                    const { id, ...rest } = cur;
-                    await setDoc(getDocRef('assignments', w.assignId), { ...rest, employeeId: employee.id });
+                    try { await setDoc(getDocRef('assignments', w.assignId), { date: w.date, time: w.time, customerName: w.customerName || '', customerPhone: w.customerPhone || '', players: w.players || null, room: w.room || '', employeeId: employee.id }); }
+                    catch (x) { try { await updateDoc(getDocRef('swaps', w.id), { status: 'cancelled' }); } catch (y) {} alert('התור כבר לא זמין להחלפה.'); return; }
                     await updateDoc(getDocRef('swaps', w.id), { status: 'accepted', acceptedBy: employee.id, acceptedByName: employee.name, acceptedAt: new Date().toISOString() });
                     sendPush(w.fromEmpId, 'התור שלך הוחלף', `${employee.name} לקח/ה את התור: ${descr(w)}`, 'upcoming');
                     sendPush('admin', 'החלפת תור בין עובדים', `${w.fromName} ← ${employee.name} · ${descr(w)}`, 'calendar');
@@ -1292,8 +1293,8 @@
 
         const AdminEmployees = ({ employees }) => {
             const [open, setOpen] = useState(false); const [edit, setEdit] = useState(null); const [saving, setSaving] = useState(false);
-            const save = async (e) => { e.preventDefault(); setSaving(true); const fd = new FormData(e.target); const d = { name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), code: fd.get('code'), address: fd.get('address'), birthday: fd.get('birthday'), wagePerGame: Number(fd.get('wagePerGame')), form101: fd.get('form101') === 'on', skills: fd.get('skills').split(',').map(s=>s.trim()), gender: fd.get('gender') || '' }; try { if(edit) await updateDoc(getDocRef('employees', edit.id), d); else await addDoc(getCollectionRef('employees'), d); setOpen(false); } catch(e) { alert(e.message); } finally { setSaving(false); } };
-            return (<div className="space-y-6"><div className="flex justify-between"><h2 className="text-2xl font-bold">ניהול עובדים</h2><button type="button" className="chip-btn tint" style={{ gap: 6, display: 'inline-flex', alignItems: 'center' }} onClick={()=>{setEdit(null); setOpen(true);}}><Plus size={18}/> הוסף עובד</button></div><div className="grid md:grid-cols-3 gap-4">{(employees||[]).map(e => (<Card key={e.id} className="relative group hover:border-indigo-500"><div className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 flex gap-2"><button onClick={()=>{setEdit(e); setOpen(true);}} className="bg-gray-900 p-1 rounded text-indigo-400">ערוך</button><button onClick={()=>confirm("למחוק?") && deleteDoc(getDocRef('employees', e.id))} className="bg-gray-900 p-1 rounded text-red-400"><Trash2 size={16}/></button></div><h3 className="font-bold text-lg">{e.name}</h3><p className="text-sm opacity-70">{e.phone}</p><div className="mt-2 text-sm opacity-60"><div>קוד: {e.code}</div><div>תעריף: ₪{e.wagePerGame}</div><div>מין: {e.gender === 'male' ? 'זכר' : (e.gender === 'female' ? 'נקבה' : 'לא הוגדר')}</div></div></Card>))}</div>{open && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold mb-4">{edit ? 'עריכה' : 'חדש'}</h3><form onSubmit={save} className="space-y-4"><div className="grid grid-cols-2 gap-4"><Input label="שם" name="name" required defaultValue={edit?.name}/><Input label="טלפון" name="phone" required defaultValue={edit?.phone}/><Input label="מייל" name="email" type="email" required defaultValue={edit?.email}/><Input label="קוד" name="code" required defaultValue={edit?.code}/><Input label="כתובת" name="address" className="col-span-2" defaultValue={edit?.address}/><Input label="יום הולדת" name="birthday" type="date" defaultValue={edit?.birthday}/><Input label="שכר למשחק" name="wagePerGame" type="number" required defaultValue={edit?.wagePerGame}/><Input label="הסמכות (מופרד בפסיק)" name="skills" className="col-span-2" defaultValue={edit?.skills?.join(', ')}/><div className="flex flex-col gap-1"><label className="text-sm opacity-70">מין (לניסוח הודעות וואטסאפ)</label><select name="gender" defaultValue={edit?.gender || ''} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"><option value="">-- לא הוגדר (מפעיל/ה) --</option><option value="female">נקבה</option><option value="male">זכר</option></select></div></div><div className="flex gap-2"><input type="checkbox" name="form101" defaultChecked={edit?.form101}/> <label>טופס 101</label></div><div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'שמור בענן'}</Button></div></form></div></div>}</div>);
+            const save = async (e) => { e.preventDefault(); setSaving(true); const fd = new FormData(e.target); const d = { name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), birthday: fd.get('birthday'), wagePerGame: Number(fd.get('wagePerGame')), form101: fd.get('form101') === 'on', skills: fd.get('skills').split(',').map(s=>s.trim()), gender: fd.get('gender') || '' }; const code = fd.get('code'); try { if (!__secure) d.code = code; let eid = edit && edit.id; if(edit) await updateDoc(getDocRef('employees', edit.id), __secure ? { ...d, code: deleteField() } : d); else { const ref = await addDoc(getCollectionRef('employees'), d); eid = ref.id; } if (eid) await setDoc(getDocRef('employee_codes', eid), { code: String(code || '') }); setOpen(false); } catch(e) { alert(e.message); } finally { setSaving(false); } };
+            return (<div className="space-y-6"><div className="flex justify-between"><h2 className="text-2xl font-bold">ניהול עובדים</h2><button type="button" className="chip-btn tint" style={{ gap: 6, display: 'inline-flex', alignItems: 'center' }} onClick={()=>{setEdit(null); setOpen(true);}}><Plus size={18}/> הוסף עובד</button></div><div className="grid md:grid-cols-3 gap-4">{(employees||[]).map(e => (<Card key={e.id} className="relative group hover:border-indigo-500"><div className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 flex gap-2"><button onClick={()=>{setEdit(e); setOpen(true);}} className="bg-gray-900 p-1 rounded text-indigo-400">ערוך</button><button onClick={()=>confirm("למחוק?") && (deleteDoc(getDocRef('employees', e.id)), deleteDoc(getDocRef('employee_codes', e.id)).catch(()=>{}))} className="bg-gray-900 p-1 rounded text-red-400"><Trash2 size={16}/></button></div><h3 className="font-bold text-lg">{e.name}</h3><p className="text-sm opacity-70">{e.phone}</p><div className="mt-2 text-sm opacity-60"><div>קוד: {codeOf(e)}</div><div>תעריף: ₪{e.wagePerGame}</div><div>מין: {e.gender === 'male' ? 'זכר' : (e.gender === 'female' ? 'נקבה' : 'לא הוגדר')}</div></div></Card>))}</div>{open && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"><div className="bg-gray-900 p-6 rounded-xl w-full max-w-2xl border border-gray-700 max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold mb-4">{edit ? 'עריכה' : 'חדש'}</h3><form onSubmit={save} className="space-y-4"><div className="grid grid-cols-2 gap-4"><Input label="שם" name="name" required defaultValue={edit?.name}/><Input label="טלפון" name="phone" required defaultValue={edit?.phone}/><Input label="מייל" name="email" type="email" required defaultValue={edit?.email}/><Input label="קוד" name="code" required defaultValue={edit ? codeOf(edit) : ''}/><Input label="כתובת" name="address" className="col-span-2" defaultValue={edit?.address}/><Input label="יום הולדת" name="birthday" type="date" defaultValue={edit?.birthday}/><Input label="שכר למשחק" name="wagePerGame" type="number" required defaultValue={edit?.wagePerGame}/><Input label="הסמכות (מופרד בפסיק)" name="skills" className="col-span-2" defaultValue={edit?.skills?.join(', ')}/><div className="flex flex-col gap-1"><label className="text-sm opacity-70">מין (לניסוח הודעות וואטסאפ)</label><select name="gender" defaultValue={edit?.gender || ''} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"><option value="">-- לא הוגדר (מפעיל/ה) --</option><option value="female">נקבה</option><option value="male">זכר</option></select></div></div><div className="flex gap-2"><input type="checkbox" name="form101" defaultChecked={edit?.form101}/> <label>טופס 101</label></div><div className="flex gap-2 pt-4"><Button type="button" variant="secondary" onClick={()=>setOpen(false)} className="flex-1">ביטול</Button><Button type="submit" disabled={saving} className="flex-1">{saving?'שומר...':'שמור בענן'}</Button></div></form></div></div>}</div>);
         };
 
         const AdminTasks = ({ employees, tasks }) => {
@@ -1326,7 +1327,7 @@
             return (
                 <div className="grid md:grid-cols-2 gap-6">
                     <Card title="מחירון והנחות"><div className="space-y-4"><h4 className="font-bold text-sm text-indigo-400">בסיס למשתתף</h4><div className="grid grid-cols-2 gap-2"><Input label="2 שחקנים" type="number" value={settings.pricing?.basePrice2} onChange={e => handlePricing('basePrice2', e.target.value)} /><Input label="3 שחקנים" type="number" value={settings.pricing?.basePrice3} onChange={e => handlePricing('basePrice3', e.target.value)} /><Input label="4 שחקנים" type="number" value={settings.pricing?.basePrice4} onChange={e => handlePricing('basePrice4', e.target.value)} /><Input label="5 שחקנים" type="number" value={settings.pricing?.basePrice5} onChange={e => handlePricing('basePrice5', e.target.value)} /><Input label="6-8 שחקנים" type="number" value={settings.pricing?.basePrice6to8} onChange={e => handlePricing('basePrice6to8', e.target.value)} /><Input label="9-10 שחקנים" type="number" value={settings.pricing?.basePrice9to10} onChange={e => handlePricing('basePrice9to10', e.target.value)} /></div><h4 className="font-bold text-sm text-indigo-400 mt-4">אחוזי הנחה</h4><div className="grid grid-cols-2 gap-2"><Input label="ילדים (%)" type="number" value={settings.pricing?.discountKids} onChange={e => handlePricing('discountKids', e.target.value)} /><Input label="זכאים (%)" type="number" value={settings.pricing?.discountEligible} onChange={e => handlePricing('discountEligible', e.target.value)} /></div><h4 className="font-bold text-sm text-indigo-400 mt-4">חדר אירוח</h4><div className="grid grid-cols-2 gap-2"><Input label="מחיר ללקוח לשעה (₪)" type="number" value={settings.pricing?.hostingRoomPerHour ?? 250} onChange={e => handlePricing('hostingRoomPerHour', e.target.value)} /><Input label="תשלום לעובד לשעה (₪)" type="number" value={settings.pricing?.hostingEmployeePerHour ?? 50} onChange={e => handlePricing('hostingEmployeePerHour', e.target.value)} /></div></div></Card>
-                    <div className="space-y-6"><Card title="כללי"><div className="space-y-4"><Input label="שם העסק" value={settings.businessName} onChange={e => update('businessName', e.target.value)} /><Input label="קוד כניסה למנהל" value={settings.adminCode} onChange={e => update('adminCode', e.target.value)} /><Input label="רשימת חדרים (מופרד בפסיק)" value={settings.roomsList} onChange={e => update('roomsList', e.target.value)} /></div></Card><Card title="חיבור Webhook ל-Tor4You"><div className="space-y-3 text-sm"><div className="opacity-80">כתובת להדבקה ב-Tor4You (הגדרות ← קישוריות ← Webhook):</div><input readOnly dir="ltr" className="w-full rounded-lg px-3 py-2 text-xs" value={`${API_URL}/tor4youWebhook`} onFocus={e => e.target.select()} /><Input label="סוד ה-Webhook (מועתק מ-Tor4You)" type="password" value={settings.t4yWebhookSecret || ''} onChange={e => update('t4yWebhookSecret', e.target.value.trim())} /><div className="text-xs opacity-70">{settings.t4yWebhookSecret ? '✅ מוגדר. הסריקה הקבועה של Tor4You פועלת כגיבוי בלבד.' : 'לא מוגדר: המערכת סורקת את Tor4You לעיתים קרובות יותר.'}</div></div></Card></div>
+                    <div className="space-y-6"><Card title="כללי"><div className="space-y-4"><Input label="שם העסק" value={settings.businessName} onChange={e => update('businessName', e.target.value)} /><Input label="קוד כניסה למנהל" value={__adminSecrets.adminCode !== undefined ? __adminSecrets.adminCode : (settings.adminCode || '')} onChange={e => { const v = e.target.value; if (!__secure) update('adminCode', v); saveSecret('adminCode', v); }} /><Input label="רשימת חדרים (מופרד בפסיק)" value={settings.roomsList} onChange={e => update('roomsList', e.target.value)} /></div></Card><Card title="חיבור Webhook ל-Tor4You"><div className="space-y-3 text-sm"><div className="opacity-80">כתובת להדבקה ב-Tor4You (הגדרות ← קישוריות ← Webhook):</div><input readOnly dir="ltr" className="w-full rounded-lg px-3 py-2 text-xs" value={`${API_URL}/tor4youWebhook`} onFocus={e => e.target.select()} /><Input label="סוד ה-Webhook (מועתק מ-Tor4You)" type="password" value={__adminSecrets.t4yWebhookSecret !== undefined ? __adminSecrets.t4yWebhookSecret : (settings.t4yWebhookSecret || '')} onChange={e => { const v = e.target.value.trim(); if (!__secure) update('t4yWebhookSecret', v); saveSecret('t4yWebhookSecret', v); }} /><div className="text-xs opacity-70">{(__adminSecrets.t4yWebhookSecret || settings.t4yWebhookSecret) ? '✅ מוגדר. הסריקה הקבועה של Tor4You פועלת כגיבוי בלבד.' : 'לא מוגדר: המערכת סורקת את Tor4You לעיתים קרובות יותר.'}</div></div></Card></div>
                     <Card title="תבנית אימייל לשכר"><div className="space-y-4"><Input label="נושא" value={settings.emailTemplate?.subject||''} onChange={e => handleTemplate('subject', e.target.value)} /><div className="space-y-1"><label className="text-sm opacity-70">תוכן (משתנים: {`{name}, {month}, {year}`})</label><textarea className="w-full bg-gray-800 border border-gray-700 rounded p-2 h-32 text-white" value={settings.emailTemplate?.body||''} onChange={e => handleTemplate('body', e.target.value)} /></div><Input label="מייל העסק" value={settings.senderEmail||''} onChange={e => update('senderEmail', e.target.value)} /></div></Card>
                     <Card title="שעות פעילות (קובעות אילו מועדים אפשר לפתוח)"><div className="space-y-2">{DAY_NAMES_EN.map((dn, i) => { const oh = settings.openingHours || INITIAL_SETTINGS.openingHours; const h = oh[dn] || { start: '', end: '' }; return (<div key={dn} className="flex items-center gap-3"><span className="w-14 text-sm">{DAY_NAMES_HE[i]}</span><input type="time" value={h.start || ''} onChange={e => update('openingHours', { ...oh, [dn]: { ...h, start: e.target.value } })} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"/><span>-</span><input type="time" value={h.end || ''} onChange={e => update('openingHours', { ...oh, [dn]: { ...h, end: e.target.value } })} className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"/></div>); })}<p className="text-xs opacity-60">סיום אחרי חצות (למשל 01:00) נתמך. השאר ריק ליום סגור.</p></div></Card>
                     <Card title="גיבוי נתונים"><div className="space-y-3"><p className="text-sm opacity-80">המערכת מגבה את כל הנתונים אוטומטית ב-1 לכל חודש בשעה 03:00 לאחסון הענן של הפרויקט. אפשר גם לגבות עכשיו.</p><Button onClick={backupNow} disabled={backing} variant="outline">{backing ? <Loader className="animate-spin w-4 h-4"/> : <Download size={16}/>} גבה עכשיו</Button></div></Card>
@@ -1543,19 +1544,53 @@
             const [loading, setLoading] = useState(true);
             const [login, setLogin] = useState({ code: '', empId: '' });
             const [dbConn, setDbConn] = useState(false);
+            const [secure, setSecure] = useState(false); const [session, setSession] = useState(null); const [loginList, setLoginList] = useState(null);
             const isMobile = useIsMobile();
             useEffect(() => { document.documentElement.classList.add('glass'); document.documentElement.classList.toggle('mglass', isMobile); }, [isMobile]);
 
             useEffect(() => {
-                const init = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
-                init();
-                return onAuthStateChanged(auth, setUser);
+                let alive = true;
+                (async () => {
+                    let info = null;
+                    try { const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 7000); const r = await fetch(`${API_URL}/loginInfo`, { signal: ctl.signal }); clearTimeout(tm); if (r.ok) info = await r.json(); } catch (e) {}
+                    if (!alive) return;
+                    if (info) { setLoginList(info.employees || []); __secure = !!info.secure; setSecure(!!info.secure); }
+                    if (info && info.secure) {
+                        const pub = {}; ['businessName', 'primaryColor', 'secondaryColor'].forEach(k => { if (info[k]) pub[k] = info[k]; });
+                        setSettings(prev => ({ ...prev, ...pub })); setLoading(false);
+                        try { if (auth.currentUser) await signOut(auth); } catch (e) {}
+                    } else { try { await signInAnonymously(auth); } catch (e) { console.error(e); } }
+                })();
+                const un = onAuthStateChanged(auth, setUser);
+                return () => { alive = false; un(); };
             }, []);
+            useEffect(() => { if (!currentUser) { setSession(null); if (__secure) { signOut(auth).catch(() => {}); } } }, [currentUser]);
 
             useEffect(() => {
                 if (!user) return;
+                if (secure && !session) return;
                 setLoading(true);
+                const me = session && session.empId; const emp = secure && session && session.role === 'employee';
+                const mine = (n, f) => query(getCollectionRef(n), where(f, '==', me));
+                const put = (k) => (s) => setData(p => ({ ...p, [k]: s.docs.map(d => ({ id: d.id, ...d.data() })) }));
+                const noop = () => {};
+                if (emp) {
+                    const unsubE = [
+                        onSnapshot(getCollectionRef('employees'), s => { put('employees')(s); setDbConn(true); }, () => setDbConn(false)),
+                        onSnapshot(mine('shifts', 'employeeId'), put('shifts'), noop),
+                        onSnapshot(mine('constraints', 'employeeId'), put('constraints'), noop),
+                        onSnapshot(mine('tasks', 'assigneeId'), put('tasks'), noop),
+                        onSnapshot(mine('groups', 'employeeId'), put('groups'), noop),
+                        onSnapshot(mine('issues', 'reportedBy'), put('issues'), noop),
+                        onSnapshot(mine('assignments', 'employeeId'), put('assignments'), noop),
+                        onSnapshot(getCollectionRef('swaps'), put('swaps'), noop),
+                        onSnapshot(getCollectionRef('app_settings'), s => { const d = s.docs.find(x => x.id === 'global'); if (d) setSettings(prev => ({ ...prev, ...d.data() })); setLoading(false); }, noop)
+                    ];
+                    return () => unsubE.forEach(u => u());
+                }
                 const unsub = [
+                    onSnapshot(doc(db, 'admin_secrets', 'main'), d => { __adminSecrets = d.exists() ? d.data() : {}; setData(p => ({ ...p, _tick: Date.now() })); }, noop),
+                    onSnapshot(collection(db, 'employee_codes'), s => { const m = {}; s.docs.forEach(d => { m[d.id] = d.data().code; }); __codes = m; setData(p => ({ ...p, _tick2: Date.now() })); }, noop),
                     onSnapshot(getCollectionRef('employees'), s => { setData(p => ({...p, employees: s.docs.map(d => ({id: d.id, ...d.data()}))})); setDbConn(true); }, e => setDbConn(false)),
                     onSnapshot(getCollectionRef('shifts'), s => setData(p => ({...p, shifts: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
                     onSnapshot(getCollectionRef('constraints'), s => setData(p => ({...p, constraints: s.docs.map(d => ({id: d.id, ...d.data()}))}))),
@@ -1573,7 +1608,7 @@
                     })
                 ];
                 return () => unsub.forEach(u => u());
-            }, [user]);
+            }, [user, secure, session]);
 
             useEffect(() => {
                 const r = document.documentElement.style;
@@ -1584,7 +1619,24 @@
                 r.setProperty('--app-border', isLight ? '#d1d5db' : 'rgba(255, 255, 255, 0.1)');
             }, [settings]);
 
-            const doLogin = () => {
+            const doLogin = async () => {
+                if (!login.empId || !login.code) return alert('בחר משתמש והזן קוד');
+                let srv = null;
+                try {
+                    const r = await fetch(`${API_URL}/loginServer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empId: login.empId, code: login.code }) });
+                    const j = await r.json().catch(() => ({}));
+                    if (r.status === 401) return alert('פרטי התחברות שגויים');
+                    if (r.status === 429) return alert(`יותר מדי ניסיונות שגויים. נסה שוב בעוד ${j.minutes || 10} דקות.`);
+                    if (r.ok && j.ok) srv = j;
+                } catch (e) {}
+                if (srv) {
+                    if (srv.token) { try { setSession({ role: srv.role, empId: srv.empId }); await signInWithCustomToken(auth, srv.token); } catch (e) { console.error(e); if (secure) { setSession(null); return alert('הכניסה נכשלה, נסה שוב.'); } } }
+                    else if (secure) return alert('הכניסה נכשלה, נסה שוב מאוחר יותר.');
+                    if (srv.role === 'admin') setCurrentUser({ role: 'admin', name: srv.name, id: 'admin' });
+                    else setCurrentUser({ role: 'employee', data: (data.employees || []).find(e => e.id === srv.empId) || { id: srv.empId, name: srv.name }, id: srv.empId, name: srv.name });
+                    return;
+                }
+                if (secure) return alert('השרת לא זמין כרגע, נסה שוב בעוד רגע.');
                 if ((login.empId === 'admin' && login.code === settings.adminCode) || (login.empId === 'admin' && (data.employees||[]).length === 0 && login.code === 'admin123')) {
                     setCurrentUser({ role: 'admin', name: 'מנהל המערכת', id: 'admin' });
                 } else {
@@ -1609,7 +1661,7 @@
                             <select className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500" value={login.empId} onChange={e => setLogin({...login, empId: e.target.value})}>
                                 <option value="">-- בחר משתמש --</option>
                                 <option value="admin">🔒 מנהל מערכת</option>
-                                {(data.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                {(loginList || data.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                             </select>
                             <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center tracking-widest outline-none focus:ring-2 focus:ring-indigo-500" value={login.code} onChange={e => setLogin({...login, code: e.target.value})} onKeyDown={e => e.key === 'Enter' && doLogin()} placeholder="****" />
                             <Button onClick={doLogin} className="w-full py-3 text-lg font-bold">כניסה</Button>
