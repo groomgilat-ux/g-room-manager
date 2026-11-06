@@ -1,0 +1,30 @@
+name: Deploy Firebase Functions
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'firebase.json'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: הזרקת מפתח Tor4You
+        env:
+          T4Y: ${{ secrets.TOR4YOU_KEY }}
+        run: |
+          test -n "$T4Y" || { echo "TOR4YOU_KEY missing"; exit 1; }
+          node -e "const fs=require('fs');const p='functions/index.js';const s=fs.readFileSync(p,'utf8');if(!s.includes('__TOR4YOU_KEY__'))throw new Error('placeholder missing');fs.writeFileSync(p,s.split('__TOR4YOU_KEY__').join(process.env.T4Y))"
+      - run: npm install --omit=dev
+        working-directory: functions
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: פריסה
+        run: npx --yes firebase-tools@latest deploy --only functions --project g-room-escape-room-management --non-interactive
