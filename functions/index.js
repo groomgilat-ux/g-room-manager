@@ -700,3 +700,70 @@ exports.tor4youWebhook = functions.https.onRequest(async (req, res) => {
         return res.status(200).send('ok');
     } catch (e) { console.error('tor4youWebhook', e); return res.status(500).send('error'); }
 });
+
+
+// ===================== כניסה מאובטחת (בדיקת קוד בשרת) =====================
+// הקודים לא נשלחים לדפדפן. השרת בודק ומחזיר אסימון כניסה עם תפקיד (admin / employee).
+const safeEq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+
+// פרטים ציבוריים למסך הכניסה: שמות עובדים (בלי קודים ובלי פרטים אישיים) ועיצוב בסיסי
+exports.loginInfo = functions.https.onRequest((req, res) => {
+    cors(req, res, async () => {
+        try {
+            const db = gdb();
+            const [emps, g, sec] = await Promise.all([db.collection('employees').get(), db.collection('app_settings').doc('global').get(), db.collection('admin_secrets').doc('main').get()]);
+            const gd = g.exists ? g.data() : {};
+            return res.status(200).json({
+                employees: emps.docs.map(d => ({ id: d.id, name: d.data().name || '' })),
+                businessName: gd.businessName || '', primaryColor: gd.primaryColor || '', secondaryColor: gd.secondaryColor || '',
+                secure: !!(sec.exists && sec.data().secureMode)
+            });
+        } catch (e) { return res.status(500).json({ error: e.message }); }
+    });
+});
+
+exports.loginServer = functions.https.onRequest((req, res) => {
+    cors(req, res, async () => {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        try {
+            const { empId, code } = req.body || {};
+            if (!empId || !code) return res.status(400).json({ error: 'missing' });
+            const db = gdb(); const id = String(empId);
+            const attRef = db.collection('login_attempts').doc(id);
+            const att = await attRef.get(); const ad = att.exists ? att.data() : {};
+            if (ad.lockedUntil && ad.lockedUntil > Date.now()) return res.status(429).json({ error: 'locked', minutes: Math.ceil((ad.lockedUntil - Date.now()) / 60000) });
+            let ok = false, name = '';
+            if (id === 'admin') {
+                const [sec, g] = await Promise.all([db.collection('admin_secrets').doc('main').get(), db.collection('app_settings').doc('global').get()]);
+                const expected = (sec.exists && sec.data().adminCode) || (g.exists && g.data().adminCode) || 'admin123';
+                ok = safeEq(code, expected); name = 'מנהל המערכת';
+            } else {
+                const e = await db.collection('employees').doc(id).get();
+                if (e.exists) {
+                    const c = await db.collection('employee_codes').doc(id).get();
+                    const expected = (c.exists && c.data().code) || e.data().code;
+                    ok = expected !== undefined && expected !== null && String(expected) !== '' && safeEq(code, expected); name = e.data().name || '';
+                }
+            }
+            if (!ok) {
+                const fails = (ad.fails || 0) + 1;
+                await attRef.set({ fails: fails >= 8 ? 0 : fails, lockedUntil: fails >= 8 ? Date.now() + 10 * 60000 : 0, last: new Date().toISOString() });
+                return res.status(401).json({ error: 'wrong' });
+            }
+            if (ad.fails || ad.lockedUntil) await attRef.set({ fails: 0, lockedUntil: 0 });
+            const role = id === 'admin' ? 'admin' : 'employee';
+            let token = null, tokenError = null;
+            try { token = await admin.auth().createCustomToken(id === 'admin' ? 'admin' : `emp_${id}`, { role, empId: id }); }
+            catch (e) { tokenError = e.message; console.error('createCustomToken failed:', e.message); }
+            return res.status(200).json({ ok: true, role, empId: id, name, token, tokenError });
+        } catch (e) { console.error('loginServer', e); return res.status(500).json({ error: e.message }); }
+    });
+});
+
+// בדיקת תקינות: האם השרת מסוגל להנפיק אסימוני כניסה (לא חושף מידע)
+exports.loginSelfTest = functions.https.onRequest((req, res) => {
+    cors(req, res, async () => {
+        try { await admin.auth().createCustomToken('selftest', { role: 'none' }); return res.status(200).json({ ok: true }); }
+        catch (e) { return res.status(200).json({ ok: false, error: e.message }); }
+    });
+});
